@@ -1,9 +1,9 @@
 Code to process data for the GroupD Ciac 2018 Evaluation
 
 The code will not run as it is lacking the credentials to access the file system. 
-That said all the files needed are includes, so with some edits to the code it should be rerunable, though that has not been tested.
+That said all the files needed are included, so with some edits to the code it should be rerunable, though that has not been tested.
 
 The procedures for creating the gross evaluation data files are in create_ciac_2018_report_data_files.py
 The procedures for generating the tables and figures are in generate_tables.py
 
-Additionally there are R files taht were used to do teh rollup of the claim data to the domian, pa, and state levels
+Additionally there are R files that were used to do the rollup of the claim data to the domian, pa, and state levels
