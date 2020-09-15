@@ -433,10 +433,10 @@ def createtablespec(ws, parameters = None) -> TableSpec:
                 elif ws.cell(tablebounds['rows'][0], j).value is not None and ws.cell(i, tablebounds['cols'][0]).value is not None:
                     print('uh oh, should not get here')
                     #tblcell = fillcelldefs(ws.cell, tblcell, ws.cell(tablebounds['rows'][0], j).value, ws.cell(i, tablebounds['cols'][0]).value)
-                else:
-                    #tblcell.field =
-                    print('hmm, how did I get here')
-                    pass
+                else:                    
+                    print('hmm, how did I get here. Check that all rows/cols have marker')                    
+                    #should this trigger a failure?
+                    # return None
 
                 if tblcell.type == markers[2]: #data
                     tblcell = addcelldefs(tblcell, fieldprops)
@@ -672,6 +672,7 @@ def createtablelist(tbl):
     #   Item 1 is a dictionary of metadata about the cell
     #   Item 2 is the value. It will be blank for empty cells, text for text stuff, and null for values that need to be calculated or looked up
     tbllist = []
+    row = [] #added in crisis, not sure if needed.
 
     tbl.sort(key = operator.attrgetter('row', 'col'))
     #tbl = sorted(tbl, key = lambda row:cell.row)
@@ -771,6 +772,6 @@ if __name__ == '__main__':
     # spec = r'Z:\Favorites\CPUC10 (Group D - Custom EM&V)\4 Deliverables\11 - Draft and Final Evaluation Reports\CIAC 2018\Design\Copy of GroupD-D11.01-CIAC 2018 Ex Post Evaluation -Design_gh.xlsx'
     spec = r'Z:\Favorites\CPUC10 (Group D - Custom EM&V)\4 Deliverables\11 - Draft and Final Evaluation Reports\CIAC 2018\Design\GroupD-D11.01-CIAC 2018 Ex Post Evaluation -Design_ginatest.xlsx'
     filepath = r'Z:\Favorites\CPUC10 (Group D - Custom EM&V)\4 Deliverables\11 - Draft and Final Evaluation Reports\CIAC 2018\Design\Design_exceltest.xlsx'
-    # filepath = r'Z:\Favorites\CPUC10 (Group D - Custom EM&V)\4 Deliverables\11 - Draft and Final Evaluation Reports\CIAC 2018\Design\GroupD-D11.01-CIAC 2018 Ex Post Evaluation -Design.xlsx'
-    specs = gettablespecs(sfsession,filepath, 'Test')
+    filepath = r'Z:\Favorites\CPUC10 (Group D - Custom EM&V)\4 Deliverables\11 - Draft and Final Evaluation Reports\CIAC 2018\Design\GroupD-D11.01-CIAC 2018 Ex Post Evaluation -Design - Addendum_1.xlsx'
+    specs = gettablespecs(sfsession,filepath, 'In Progress')
     print(specs)

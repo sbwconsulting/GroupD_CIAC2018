@@ -1,4 +1,5 @@
 library(data.table)
+bln_write <- T
 
 fname_net_claim <- 'Z:/Favorites/CPUC10 (Group D - Custom EM&V)/8 PII/11 - Draft and Final Evaluation Reports/CIAC2018/Data/net_claim.csv'
 fname_import_domGr <- 'Z:/Favorites/CPUC10 (Group D - Custom EM&V)/8 PII/11 - Draft and Final Evaluation Reports/CIAC2018/Data/domain_gross_summary.csv'
@@ -20,7 +21,7 @@ roll_up <- function(savings,rp){
   return(sqrt(sum((savings*rp)^2,na.rm=T))/sum(savings,na.rm=T))
 }
 dt_ciac_net <- fread(file=fname_net_claim)
-
+# colnames(dt_ciac_net)[grep('first|1|ntgr',colnames(dt_ciac_net),ignore.case = T)]
 dt_ciac_proj_net <- dt_ciac_net[,.(meas_ct=length(ClaimID),
                               ea_AnnGross_kWh=sum(ExAnte_Annualized_NoRR_kWh,na.rm=T),ea_AnnGross_kW=sum(ExAnte_Annualized_NoRR_kW,na.rm=T),
                               ea_LCGross_kWh=sum(ExAnte_LifeCycleGross_NoRR_kWh,na.rm=T),ea_LCGross_kW=sum(ExAnte_LifeCycleGross_NoRR_kW,na.rm=T),
@@ -37,13 +38,17 @@ dt_ciac_proj_net <- dt_ciac_net[,.(meas_ct=length(ClaimID),
                               ep_LCNet_thm=sum(prj_EvalExPostLifeCycleNetthm,na.rm=T),
                               dom_eval_RR_kWh_AG=mean(dom_eval_RR_kWh_AG,na.rm=T),dom_eval_RR_kW_AG=mean(dom_eval_RR_kW_AG,na.rm=T),
                               dom_eval_RR_kWh_LG=mean(dom_eval_RR_kWh_LG,na.rm=T),dom_eval_RR_kW_LG=mean(dom_eval_RR_kW_LG,na.rm=T),
+                              dom_eval_RR_kWh_1G=mean(dom_eval_RR_kWh_1G,na.rm=T),dom_eval_RR_kW_1G=mean(dom_eval_RR_kW_1G,na.rm=T),
                               dom_eval_RR_thm_AG=mean(dom_eval_RR_thm_AG,na.rm=T),
                               dom_eval_RR_thm_LG=mean(dom_eval_RR_thm_LG,na.rm=T),
+                              dom_eval_RR_thm_1G=mean(dom_eval_RR_thm_1G,na.rm=T),
+                              ea_1stYrGross_kWh=sum(ExAnteBase1kWhSvgs,na.rm=T),ea_1stYrGross_kW=sum(ExAnteBase1kWSvgs,na.rm=T),ea_1stYrGross_thm=sum(ExAnteBase1ThermSvgs,na.rm=T),
                               rp_dom_eval_RR_kWh_AG=mean(rp_dom_eval_RR_kWh_AG,na.rm=T),rp_dom_eval_RR_kW_AG=mean(rp_dom_eval_RR_kW_AG,na.rm=T),
                               rp_dom_eval_RR_kWh_LG=mean(rp_dom_eval_RR_kWh_LG,na.rm=T),rp_dom_eval_RR_kW_LG=mean(rp_dom_eval_RR_kW_LG,na.rm=T),
                               rp_dom_eval_RR_thm_AG=mean(rp_dom_eval_RR_thm_AG,na.rm=T),rp_dom_eval_RR_thm_LG=mean(dom_eval_RR_thm_LG,na.rm=T),
                               ea_NTGR_kWh=mean(st_ExAnte_NTGRkWh),ea_NTGR_kW=mean(st_ExAnte_NTGRkW),ea_NTGR_thm=mean(st_ExAnte_NTGRTherm),
                               ep_NTGR_kWh=mean(st_EvalNTGRkWh),ep_NTGR_kW=mean(st_EvalNTGRkW),ep_NTGR_thm=mean(st_EvalNTGRTherm),
+                              ep_1stYr_NTGR_kWh=mean(firstyear_ntgr_kwh),ep_1stYr_NTGR_kW=mean(firstyear_ntgr_kw),ep_1stYr_NTGR_thm=mean(firstyear_ntgr_thm),
                               GrossCompl=max(GrossCompl,na.rm=T),
                               ea_EUL_kWh=mean(ea_EUL_kWh,na.rm=T),ea_EUL_thm=mean(ea_EUL_thm,na.rm=T),
                               ep_EUL_kWh=mean(ep_EUL_kWh,na.rm=T),ep_EUL_thm=mean(ep_EUL_thm,na.rm=T)),
@@ -53,19 +58,29 @@ dt_ciac_proj_net <- dt_ciac_net[,.(meas_ct=length(ClaimID),
 dt_ciac_proj <- dt_ciac_proj_net[!is.na(Frame_Electric) & !is.na(Frame_Gas)]
 
 ## domain level----
-dom_AnnNet_smry_el <- strat.mean.estimator(dt_ciac_proj,period='1stYear',frame='Electric')
-dom_AnnNet_smry_gas <- strat.mean.estimator(dt_ciac_proj,period='1stYear',frame='Gas')
+dom_AnnNet_smry_el <- strat.mean.estimator(dt_ciac_proj,period='Annualized',frame='Electric')
+dom_AnnNet_smry_gas <- strat.mean.estimator(dt_ciac_proj,period='Annualized',frame='Gas')
 dom_AnnNet_smry <- merge(dom_AnnNet_smry_el,dom_AnnNet_smry_gas,all=T,suffixes=c('_kWh','_thm'),
                          by=c('PA','domain'))
 
-dom_LCNet_smry_el <- strat.mean.estimator(dt_ciac_proj,frame='Electric',period='Lifecycle')
-dom_LCNet_smry_gas <- strat.mean.estimator(dt_ciac_proj,frame='Gas',period='Lifecycle')
+dom_LCNet_smry_el <- strat.mean.estimator(dt_ciac_proj,frame='Electric',period='LifeCycle')
+dom_LCNet_smry_gas <- strat.mean.estimator(dt_ciac_proj,frame='Gas',period='LifeCycle')
 dom_LCNet_smry <- merge(dom_LCNet_smry_el,dom_LCNet_smry_gas,all=T,suffixes=c('_kWh','_thm'),
                          by=c('PA','domain'))
+
+dom_1stYrNet_smry_el <- strat.mean.estimator(dt_ciac_proj,frame='Electric',period='FirstYear')
+dom_1stYrNet_smry_gas <- strat.mean.estimator(dt_ciac_proj,frame='Gas',period='FirstYear')
+dom_1stYrNet_smry <- merge(dom_1stYrNet_smry_el,dom_1stYrNet_smry_gas,all=T,suffixes=c('_kWh','_thm'),
+                        by=c('PA','domain'))
+
+cnames_NTGR <- colnames(dom_1stYrNet_smry)[grep('^dom_.*eval_',colnames(dom_1stYrNet_smry))]
+dom_1stYrNet_smry <- dom_1stYrNet_smry[,c('domain',cnames_NTGR),with=F]
+setnames(dom_1stYrNet_smry,colnames(dom_1stYrNet_smry),c('domain',paste0(cnames_NTGR,'_1N')))
 
 dom_Net_smry <- merge(dom_AnnNet_smry,dom_LCNet_smry,all=T,suffixes = c('_AN','_LN'),
                       by=c('PA','domain','dom_pop_net_kWh','dom_n_net_kWh','dom_cmplt_net_kWh',
                            'dom_pop_net_thm','dom_n_net_thm','dom_cmplt_net_thm'))
+dom_Net_smry <- merge(dom_Net_smry,dom_1stYrNet_smry,by='domain')
 
 dom_Gross_smry <- fread(fname_import_domGr)
 dom_smry_all <- merge(dom_Gross_smry,dom_Net_smry,all=T,by=colnames(dom_Net_smry)[colnames(dom_Net_smry) %in% colnames(dom_Gross_smry)])
@@ -134,12 +149,11 @@ strat_smry_ar_el <- dt_ciac_ar_proj[(Frame_Electric) & (sampled_kWh =='Y' | (net
                             str_ep_pct_AR_kW=sum(wi_ep_pct_AR_kW,na.rm=T),
                             mean_ea_LCNet_kWh=mean(ea_LCNet_kWh,na.rm=T),mean_ea_LCNet_kW=mean(ea_LCNet_kW,na.rm=T),
                             mean_ep_LCNet_kWh=mean(ep_LCNet_kWh,na.rm=T),mean_ep_LCNet_kW=mean(ep_LCNet_kW,na.rm=T),
-                            mean_ep_AnnNet_kWh=mean(ep_AnnNet_kWh,na.rm=T),mean_ep_AnnNet_kW=mean(ep_AnnNet_kW,na.rm=T)
-),
-by=c('PA','domain','stratum_kWh')][
-  dt_ciac_ar_proj[(Frame_Electric),.(pop_h=length(SampleID)),by=c('PA','domain','stratum_kWh')],on=c('PA','domain','stratum_kWh')][
-    dt_ciac_ar_proj[(Frame_Electric),.(pop=length(SampleID)),
-                    by=c('PA','domain')],on=c('PA','domain')]
+                            mean_ep_AnnNet_kWh=mean(ep_AnnNet_kWh,na.rm=T),mean_ep_AnnNet_kW=mean(ep_AnnNet_kW,na.rm=T)),
+                            by=c('PA','domain','stratum_kWh')][
+                              dt_ciac_ar_proj[(Frame_Electric),.(pop_h=length(SampleID)),by=c('PA','domain','stratum_kWh')],
+                              on=c('PA','domain','stratum_kWh')][
+                                dt_ciac_ar_proj[(Frame_Electric),.(pop=length(SampleID)),by=c('PA','domain')],on=c('PA','domain')]
 dom_smry_ar_el <- strat_smry_ar_el[,.(dom_pop=sum(pop,na.rm=T),exante_pct_AR_kWh=sum(pop_h*str_ea_pct_AR_kWh,na.rm=T)/sum(pop_h,na.rm=T),
                                       exante_pct_AR_kW=sum(pop_h*str_ea_pct_AR_kW,na.rm=T)/sum(pop_h,na.rm=T),
                                       dom_ea_LCNet_kWh=sum(pop*mean_ea_LCNet_kWh,na.rm=T),
@@ -151,8 +165,8 @@ dom_smry_ar_el <- strat_smry_ar_el[,.(dom_pop=sum(pop,na.rm=T),exante_pct_AR_kWh
                                       dom_ep_AnnNet_kWh=sum(pop*mean_ep_AnnNet_kWh,na.rm=T),
                                       dom_ep_AnnNet_kW=sum(pop*mean_ep_AnnNet_kW,na.rm=T)),
                                    by=c('PA','domain')]
-dom_smry_ar_el[,expost_avg_EUL_kWh:=dom_ep_LCNet_kWh/dom_ep_AnnNet_kWh]
-dom_smry_ar_el[,expost_avg_EUL_kW:=dom_ep_LCNet_kW/dom_ep_AnnNet_kW]
+# dom_smry_ar_el[,expost_avg_EUL_kWh:=dom_ep_LCNet_kWh/dom_ep_AnnNet_kWh]
+# dom_smry_ar_el[,expost_avg_EUL_kW:=dom_ep_LCNet_kW/dom_ep_AnnNet_kW]
 
 strat_smry_ar_gas <- dt_ciac_ar_proj[(Frame_Gas) & (sampled_thm=='Y' | (net_cmplt_thm)),.(n_h=length(SampleID),
                               str_ea_pct_AR_thm=sum(wi_ea_pct_AR_thm,na.rm=T),
@@ -160,54 +174,78 @@ strat_smry_ar_gas <- dt_ciac_ar_proj[(Frame_Gas) & (sampled_thm=='Y' | (net_cmpl
                               mean_ea_LCNet_thm=mean(ea_LCNet_thm,na.rm=T),
                               mean_ep_LCNet_thm=mean(ep_LCNet_thm,na.rm=T),
                               mean_ep_AnnNet_thm=mean(ep_AnnNet_thm,na.rm=T)),
-by=c('PA','domain','stratum_thm')][
-  dt_ciac_ar_proj[(Frame_Gas),.(pop_h=length(SampleID)),by=c('PA','domain','stratum_thm')],on=c('PA','domain','stratum_thm')][
-    dt_ciac_ar_proj[(Frame_Gas),.(pop=length(SampleID)),
-                    by=c('PA','domain')],on=c('PA','domain')]
+                              by=c('PA','domain','stratum_thm')][
+                                dt_ciac_ar_proj[(Frame_Gas),.(pop_h=length(SampleID)),by=c('PA','domain','stratum_thm')],on=c('PA','domain','stratum_thm')][
+                                  dt_ciac_ar_proj[(Frame_Gas),.(pop=length(SampleID)),by=c('PA','domain')],on=c('PA','domain')]
 dom_smry_ar_gas <- strat_smry_ar_gas[,.(dom_pop=sum(pop,na.rm=T),exante_pct_AR_thm=sum(pop_h*str_ea_pct_AR_thm,na.rm=T)/sum(pop_h,na.rm=T),
                                       dom_ea_LCNet_thm=sum(pop*mean_ea_LCNet_thm,na.rm=T),
                                       expost_pct_AR_thm=sum(pop_h*str_ep_pct_AR_thm,na.rm=T)/sum(pop_h,na.rm=T),
                                       dom_ep_LCNet_thm=sum(pop*mean_ep_LCNet_thm,na.rm=T),
                                       dom_ep_AnnNet_thm=sum(pop*mean_ep_AnnNet_thm,na.rm=T)),
                                    by=c('PA','domain')]
-dom_smry_ar_gas[,expost_avg_EUL_thm:=dom_ep_LCNet_thm/dom_ep_AnnNet_thm]
+# dom_smry_ar_gas[,expost_avg_EUL_thm:=dom_ep_LCNet_thm/dom_ep_AnnNet_thm]
 
 dom_smry_ar <- merge(dom_smry_ar_el,dom_smry_ar_gas,all=T,by=c('PA','domain'),suffixes = c('_kWh','_thm'))
-keep_cols_ar_dom <- c('exante_pct_AR_kWh','exante_pct_AR_kW','exante_pct_AR_thm',
-                      'expost_pct_AR_kWh','expost_pct_AR_kW','expost_pct_AR_thm',
-                      'expost_avg_EUL_kWh','expost_avg_EUL_kW','expost_avg_EUL_thm')
-pct_AR_cols <- colnames(dom_smry_ar)[grep('AR',colnames(dom_smry_ar))]
-dom_smry_ar[,(pct_AR_cols):=lapply(.SD,function(x)ifelse(is.infinite(x),0,x)),.SDcols=pct_AR_cols]
+# keep_cols_ar_dom <- c('exante_pct_AR_kWh','exante_pct_AR_kW','exante_pct_AR_thm',
+#                       'expost_pct_AR_kWh','expost_pct_AR_kW','expost_pct_AR_thm',
+#                       'dom_ea_AR_kWh','dom_ea_AR_kW','dom_ea_AR_thm',
+#                       'dom_ep_AR_kWh','dom_ep_AR_kW','dom_ep_AR_thm',
+#                       'expost_avg_EUL_kWh','expost_avg_EUL_kW','expost_avg_EUL_thm')
+AR_cols <- colnames(dom_smry_ar)[grep('AR',colnames(dom_smry_ar))]
+# dom_smry_ar[,c('domain',AR_cols),with=F]
+# dom_smry_ar[,(AR_cols):=lapply(.SD,function(x)ifelse(is.infinite(x),0,x)),.SDcols=AR_cols]
 
-dom_smry_all <- dom_smry_ar[,c('PA','domain',keep_cols_ar_dom),with=F][dom_smry_all,on=c('PA','domain')]
-keep_cols <- colnames(dom_smry_all)[!grepl('_n_net|pop_net|_Wh|ep|ea_|PA_|gr_',colnames(dom_smry_all))]
+# dom_smry_all <- dom_smry_ar[,c('PA','domain',keep_cols_ar_dom),with=F][dom_smry_all,on=c('PA','domain')]
+dom_smry_all <- dom_smry_ar[,c('PA','domain',AR_cols),with=F][dom_smry_all,on=c('PA','domain')]
+dom_smry_all[,dom_ea_AR_kWh:=exante_pct_AR_kWh*dom_exante_svgs_kWh_LN]
+dom_smry_all[,dom_ea_AR_kW:=exante_pct_AR_kW*dom_exante_svgs_kW_LN]
+dom_smry_all[,dom_ep_AR_kWh:=expost_pct_AR_kWh*dom_eval_svgs_kWh_LN]
+dom_smry_all[,dom_ep_AR_kW:=expost_pct_AR_kW*dom_eval_svgs_kW_LN]
+dom_smry_all[,dom_ea_AR_thm:=exante_pct_AR_thm*dom_exante_svgs_thm_LN]
+dom_smry_all[,dom_ep_AR_thm:=expost_pct_AR_thm*dom_eval_svgs_thm_LN]
+
+# dom_smry_all[,c('domain','dom_eval_EUL_kWh','dom_eval_EUL_thm')]
+keep_cols <- colnames(dom_smry_all)[!grepl('_n_net|pop_net|_Wh|PA_|gr_',colnames(dom_smry_all))]
 dom_smry_all[,c('domain',keep_cols[grepl('AR',keep_cols)]),with=F]
 RP_NTGR_cols <- colnames(dom_smry_all)[grep('RP.*NTGR',colnames(dom_smry_all))]
 dom_smry_all[,RP_NTGR_cols,with=F]
 dom_smry_all[,(RP_NTGR_cols):=lapply(.SD,function(x)ifelse(is.nan(x),NA,x)),.SDcols=RP_NTGR_cols]
-write.csv(dom_smry_all[,keep_cols,with=F],file=fname_export_dom,row.names = F)
+if (bln_write) write.csv(dom_smry_all[,keep_cols,with=F],file=fname_export_dom,row.names = F)
 
 ## roll up to PA level ----
 ## Gross
 PA_Gross_smry <- fread(fname_import_PA)
 ## Net
-PA_AnnNet_smry_el <- strat.mean.estimator(dt_ciac_proj,frame='Electric',period='1stYear',return_PA = T)
-PA_AnnNet_smry_gas <- strat.mean.estimator(dt_ciac_proj,frame='Gas',period='1stYear',return_PA = T)
+PA_AnnNet_smry_el <- strat.mean.estimator(dt_ciac_proj,frame='Electric',period='Annualized',return_PA = T)
+PA_AnnNet_smry_gas <- strat.mean.estimator(dt_ciac_proj,frame='Gas',period='Annualized',return_PA = T)
 PA_AnnNet_smry <- merge(PA_AnnNet_smry_el,PA_AnnNet_smry_gas,all=T,suffixes=c('_kWh','_thm'),
                          by=c('PA'))
-PA_LCNet_smry_el <- strat.mean.estimator(dt_ciac_proj,frame='Electric',period='Lifecycle',return_PA = T)
-PA_LCNet_smry_gas <- strat.mean.estimator(dt_ciac_proj,frame='Gas',period='Lifecycle',return_PA = T)
+PA_LCNet_smry_el <- strat.mean.estimator(dt_ciac_proj,frame='Electric',period='LifeCycle',return_PA = T)
+PA_LCNet_smry_gas <- strat.mean.estimator(dt_ciac_proj,frame='Gas',period='LifeCycle',return_PA = T)
 PA_LCNet_smry <- merge(PA_LCNet_smry_el,PA_LCNet_smry_gas,all=T,suffixes=c('_kWh','_thm'),
                         by=c('PA'))
+PA_1stYrNet_smry_el <- strat.mean.estimator(dt_ciac_proj,frame='Electric',period='FirstYear',return_PA = T)
+PA_1stYrNet_smry_gas <- strat.mean.estimator(dt_ciac_proj,frame='Gas',period='FirstYear',return_PA = T)
+PA_1stYrNet_smry <- merge(PA_1stYrNet_smry_el,PA_1stYrNet_smry_gas,all=T,suffixes=c('_kWh','_thm'),
+                       by=c('PA'))
+
+cnames_eval_PA <- colnames(PA_1stYrNet_smry)[grep('^PA_.*eval_',colnames(PA_1stYrNet_smry))]
+PA_1stYrNet_smry <- PA_1stYrNet_smry[,c('PA',cnames_eval_PA),with=F]
+setnames(PA_1stYrNet_smry,colnames(PA_1stYrNet_smry),c('PA',paste0(cnames_eval_PA,'_1N')))
+
 PA_Net_smry <- merge(PA_AnnNet_smry,PA_LCNet_smry,all=T,suffixes = c('_AN','_LN'),
                       by=c('PA','PA_pop_net_kWh','PA_n_net_kWh','PA_cmplt_net_kWh',
                            'PA_pop_net_thm','PA_n_net_thm','PA_cmplt_net_thm'))
-ntgr_cols <- colnames(PA_Net_smry)[grep('PA_mean_eval_NTGR',colnames(PA_Net_smry))]
-ntgr_cols_new <- gsub('_mean_eval_','_',ntgr_cols)
+PA_Net_smry <- merge(PA_Net_smry,PA_1stYrNet_smry,by='PA')
+
+ntgr_cols <- colnames(PA_Net_smry)[grep('PA_eval_NTGR',colnames(PA_Net_smry))]
+ntgr_cols_new <- gsub('_eval_','_',ntgr_cols)
 setnames(PA_Net_smry,ntgr_cols,ntgr_cols_new)
+
 ntgr_cols <- colnames(PA_Net_smry)[grep('NTGR',colnames(PA_Net_smry))]
 ntgr_cols_new <- gsub('_AN','_Ann',ntgr_cols)
 ntgr_cols_new <- gsub('_LN','_LC',ntgr_cols_new)
+ntgr_cols_new <- gsub('_1N','_1stYr',ntgr_cols_new)
 setnames(PA_Net_smry,ntgr_cols,ntgr_cols_new)
 
 PA_Net_smry <- PA_Net_smry[dom_Net_smry[,.(PA_rp_kWh_AN=roll_up(dom_eval_svgs_kWh_AN,RP_dom_NTGR_kWh_AN),
@@ -216,72 +254,104 @@ PA_Net_smry <- PA_Net_smry[dom_Net_smry[,.(PA_rp_kWh_AN=roll_up(dom_eval_svgs_kW
                                                  PA_rp_kWh_LN=roll_up(dom_eval_svgs_kWh_LN,RP_dom_NTGR_kWh_LN),
                                                  PA_rp_kW_LN=roll_up(dom_eval_svgs_kW_LN,RP_dom_NTGR_kW_LN),
                                                  PA_rp_thm_LN=roll_up(dom_eval_svgs_thm_LN,RP_dom_NTGR_thm_LN)),by='PA'],on='PA']
+# intersect(colnames(PA_Gross_smry),colnames(PA_Net_smry))
 PA_smry <- PA_Net_smry[PA_Gross_smry,on='PA']
-PA_smry[,c('PA',colnames(PA_smry)[grep('rr|ntgr',colnames(PA_smry),ignore.case = T)]),with=F]
+# PA_smry[,c('PA',colnames(PA_smry)[grep('rr|ntgr',colnames(PA_smry),ignore.case = T)]),with=F]
 
-PA_smry_ar <- dom_smry_ar[,.(PA_exante_pct_AR_kWh=sum(dom_pop_kWh*exante_pct_AR_kWh,na.rm=T)/sum(dom_pop_kWh,na.rm=T),
-                             PA_exante_pct_AR_kW=sum(dom_pop_kWh*exante_pct_AR_kW,na.rm=T)/sum(dom_pop_kWh,na.rm=T),
-                             PA_exante_pct_AR_thm=sum(dom_pop_thm*exante_pct_AR_thm,na.rm=T)/sum(dom_pop_thm,na.rm=T),
-                             PA_exante_LCNet_kWh=sum(dom_ea_LCNet_kWh,na.rm=T),
-                             PA_exante_LCNet_kW=sum(dom_ea_LCNet_kW,na.rm=T),
-                             PA_exante_LCNet_thm=sum(dom_ea_LCNet_thm,na.rm=T),
-                             PA_expost_pct_AR_kWh=sum(dom_pop_kWh*expost_pct_AR_kWh,na.rm=T)/sum(dom_pop_kWh,na.rm=T),
-                             PA_expost_pct_AR_kW=sum(dom_pop_kWh*expost_pct_AR_kW,na.rm=T)/sum(dom_pop_kWh,na.rm=T),
-                             PA_expost_pct_AR_thm=sum(dom_pop_thm*expost_pct_AR_thm,na.rm=T)/sum(dom_pop_thm,na.rm=T),
-                             PA_ep_LCNet_kWh=sum(dom_ep_LCNet_kWh,na.rm=T),
-                             PA_ep_LCNet_kW=sum(dom_ep_LCNet_kW,na.rm=T),
-                             PA_ep_LCNet_thm=sum(dom_ep_LCNet_thm,na.rm=T),
-                             PA_ep_AnnNet_kWh=sum(dom_ep_AnnNet_kWh,na.rm=T),
-                             PA_ep_AnnNet_kW=sum(dom_ep_AnnNet_kW,na.rm=T),
-                             PA_ep_AnnNet_thm=sum(dom_ep_AnnNet_thm,na.rm=T),
+PA_smry_ar <- dom_smry_all[,.(PA_exante_pct_AR_kWh=sum(dom_ea_AR_kWh,na.rm=T)/sum(dom_exante_svgs_kWh_LN,na.rm=T),
+                             PA_exante_pct_AR_kW=sum(dom_ea_AR_kW,na.rm=T)/sum(dom_exante_svgs_kW_LN,na.rm=T),
+                             PA_exante_pct_AR_thm=sum(dom_ea_AR_thm,na.rm=T)/sum(dom_exante_svgs_thm_LN,na.rm=T),
+                             PA_exante_LCNet_kWh=sum(dom_exante_svgs_kWh_LN,na.rm=T),
+                             PA_exante_LCNet_kW=sum(dom_exante_svgs_kW_LN,na.rm=T),
+                             PA_exante_LCNet_thm=sum(dom_exante_svgs_thm_LN,na.rm=T),
+                             PA_expost_pct_AR_kWh=sum(dom_ep_AR_kWh,na.rm=T)/sum(dom_eval_svgs_kWh_LN,na.rm=T),
+                             PA_expost_pct_AR_kW=sum(dom_ep_AR_kW,na.rm=T)/sum(dom_eval_svgs_kW_LN,na.rm=T),
+                             PA_expost_pct_AR_thm=sum(dom_ep_AR_thm,na.rm=T)/sum(dom_eval_svgs_thm_LN,na.rm=T),
+                             PA_ep_LCNet_kWh=sum(dom_eval_svgs_kWh_LN,na.rm=T),
+                             PA_ep_LCNet_kW=sum(dom_eval_svgs_kW_LN,na.rm=T),
+                             PA_ep_LCNet_thm=sum(dom_eval_svgs_thm_LN,na.rm=T),
+                             PA_ep_AnnNet_kWh=sum(dom_eval_svgs_kWh_AN,na.rm=T),
+                             PA_ep_AnnNet_kW=sum(dom_eval_svgs_kWh_AN,na.rm=T),
+                             PA_ep_AnnNet_thm=sum(dom_eval_svgs_kWh_AN,na.rm=T),
+                             # PA_expost_EUL_kWh=sum(expost_avg_EUL_kWh*dom_ep_AnnNet_kWh,na.rm=T)/sum(dom_ep_AnnNet_kWh,na.rm=T),
+                             # PA_expost_EUL_kW=sum(expost_avg_EUL_kW*dom_ep_AnnNet_kW,na.rm=T)/sum(dom_ep_AnnNet_kW,na.rm=T),
+                             # PA_expost_EUL_thm=sum(expost_avg_EUL_thm*dom_ep_AnnNet_thm,na.rm=T)/sum(dom_ep_AnnNet_thm,na.rm=T),
                              # PA_expost_AR_kWh=sum(expost_AR_kWh,na.rm=T),
                              # PA_expost_AR_kW=sum(expost_AR_kW,na.rm=T),
                              # PA_expost_AR_thm=sum(expost_AR_thm,na.rm=T)
                              PA_pop_kWh=sum(dom_pop_kWh,na.rm=T),PA_pop_thm=sum(dom_pop_thm,na.rm=T)),by=PA]
-PA_smry_ar[,PA_expost_EUL_kWh:=PA_ep_LCNet_kWh/PA_ep_AnnNet_kWh]
-PA_smry_ar[,PA_expost_EUL_kW:=PA_ep_LCNet_kW/PA_ep_AnnNet_kW]
-PA_smry_ar[,PA_expost_EUL_thm:=PA_ep_LCNet_thm/PA_ep_AnnNet_thm]
-keep_cols_ar_PA <- paste0(rep('PA_',12),keep_cols_ar_dom)
-keep_cols_ar_PA <- gsub('avg_','',keep_cols_ar_PA)
+# PA_smry_ar[,PA_expost_EUL_kWh:=PA_ep_LCNet_kWh/PA_ep_AnnNet_kWh]
+# PA_smry_ar[,PA_expost_EUL_kW:=PA_ep_LCNet_kW/PA_ep_AnnNet_kW]
+# PA_smry_ar[,PA_expost_EUL_thm:=PA_ep_LCNet_thm/PA_ep_AnnNet_thm]
+# keep_cols_ar_PA <- paste0(rep('PA_',12),keep_cols_ar_dom)
+# keep_cols_ar_PA <- setdiff(keep_cols_ar_PA,keep_cols_ar_PA[grep('dom',keep_cols_ar_PA)])
+# keep_cols_ar_PA <- gsub('avg_','',keep_cols_ar_PA)
+PA_smry_ar[,(colnames(PA_smry_ar)[grep('pct',colnames(PA_smry_ar))]):=lapply(.SD,function(x) ifelse(is.nan(x),0,x)),.SDcols=colnames(PA_smry_ar)[grep('pct',colnames(PA_smry_ar))]]
+# PA_smry_ar[,(colnames(PA_smry_ar)[grep('EUL',colnames(PA_smry_ar))]):=lapply(.SD,function(x) ifelse(is.nan(x),NA,x)),.SDcols=colnames(PA_smry_ar)[grep('EUL',colnames(PA_smry_ar))]]
 
-PA_smry <- PA_smry_ar[,c('PA',keep_cols_ar_PA),with=F][PA_smry,on='PA']
+# intersect(colnames(PA_smry_ar[,c('PA',keep_cols_ar_PA),with=F]),colnames(PA_smry))
+AR_cols <- c(colnames(PA_smry_ar)[grep('AR',colnames(PA_smry_ar))],'PA_exante_LCNet_kWh','PA_exante_LCNet_kW','PA_exante_LCNet_thm')
+PA_smry <- PA_smry_ar[,c('PA',AR_cols),with=F][PA_smry,on='PA']
+PA_smry[,PA_ea_AR_kWh:=PA_exante_pct_AR_kWh*PA_exante_LCNet_kWh]
+PA_smry[,PA_ea_AR_kW:=PA_exante_pct_AR_kW*PA_exante_LCNet_kW]
+PA_smry[,PA_ep_AR_kWh:=PA_expost_pct_AR_kWh*PA_eval_svgs_kWh_LN]
+PA_smry[,PA_ep_AR_kW:=PA_expost_pct_AR_kW*PA_eval_svgs_kW_LN]
+PA_smry[,PA_ea_AR_thm:=PA_exante_pct_AR_thm*PA_exante_LCNet_thm]
+PA_smry[,PA_ep_AR_thm:=PA_expost_pct_AR_thm*PA_eval_svgs_thm_LN]
+PA_smry[,c('PA',colnames(PA_smry)[grep('AR',colnames(PA_smry))]),with=F]
 
 PA_exante_Net_smry_el <- dt_ciac_proj[(Frame_Electric),.(PA_exante_kWh_AN=sum(ea_AnnNet_kWh,na.rm=T),PA_exante_kW_AN=sum(ea_AnnNet_kW,na.rm=T),
                 PA_exante_svgs_kWh_LN=sum(ea_LCNet_kWh,na.rm=T),PA_exante_svgs_kW_LN=sum(ea_LCNet_kW,na.rm=T)),by=c('PA')]
 PA_exante_Net_smry_gas <- dt_ciac_proj[(Frame_Gas),.(PA_exante_svgs_thm_AN=sum(ea_AnnNet_thm,na.rm=T),
                                                       PA_exante_svgs_thm_LN=sum(ea_LCNet_thm,na.rm=T)),by=c('PA')]
 PA_exante_Net_smry <- merge(PA_exante_Net_smry_el,PA_exante_Net_smry_gas,all=T,by=c('PA'))
+# intersect(colnames(PA_smry),colnames(PA_exante_Net_smry))
 PA_smry <- PA_exante_Net_smry[PA_smry,on=c('PA')]
+drop_cols_PA <- colnames(PA_smry)[grep('\\.1',colnames(PA_smry))]
+PA_smry[,(drop_cols_PA):=NULL]
 
-write.csv(PA_smry,fname_export_PA,row.names = F)
+# PA_smry[,c('PA','PA_NTGR_thm_Ann','PA_NTGR_thm_LC')]
+# dom_smry_all[grep('PGE.*AG',domain),c('domain','dom_mean_eval_NTGR_thm_AN','dom_mean_eval_NTGR_thm_LN')]
+
+if (bln_write) write.csv(PA_smry,fname_export_PA,row.names = F)
 
 ## roll up to SW level----
-SW_AnnNet_smry_el <- strat.mean.estimator(dt_ciac_proj,frame='Electric',period='1stYear',return_SW = T)
+SW_AnnNet_smry_el <- strat.mean.estimator(dt_ciac_proj,frame='Electric',period='Annualized',return_SW = T)
 setnames(SW_AnnNet_smry_el,c('SW_n_net','SW_cmplt_net'),c('SW_n_net_kWh','SW_cmplt_net_kWh'))
-SW_AnnNet_smry_gas <- strat.mean.estimator(dt_ciac_proj,frame='Gas',period='1stYear',return_SW = T)
+SW_AnnNet_smry_gas <- strat.mean.estimator(dt_ciac_proj,frame='Gas',period='Annualized',return_SW = T)
 setnames(SW_AnnNet_smry_gas,c('SW_n_net','SW_cmplt_net'),c('SW_n_net_thm','SW_cmplt_net_thm'))
 SW_AnnNet_smry <- cbind(SW_AnnNet_smry_el,SW_AnnNet_smry_gas)
 cols <- setdiff(colnames(SW_AnnNet_smry),colnames(SW_AnnNet_smry)[grep('_n_|_cmplt_',colnames(SW_AnnNet_smry))])
 cols_new <- paste0(cols,rep('_AN',6))
 setnames(SW_AnnNet_smry,cols,cols_new)
 
-SW_LCNet_smry_el <- strat.mean.estimator(dt_ciac_proj,frame='Electric',period='Lifecycle',return_SW = T)
+SW_LCNet_smry_el <- strat.mean.estimator(dt_ciac_proj,frame='Electric',period='LifeCycle',return_SW = T)
 SW_LCNet_smry_el[,c('SW_n_net','SW_cmplt_net'):=NULL]
-SW_LCNet_smry_gas <- strat.mean.estimator(dt_ciac_proj,frame='Gas',period='Lifecycle',return_SW = T)
+SW_LCNet_smry_gas <- strat.mean.estimator(dt_ciac_proj,frame='Gas',period='LifeCycle',return_SW = T)
 SW_LCNet_smry_gas[,c('SW_n_net','SW_cmplt_net'):=NULL]
 SW_LCNet_smry <- cbind(SW_LCNet_smry_el,SW_LCNet_smry_gas)
 cols <- setdiff(colnames(SW_LCNet_smry),colnames(SW_LCNet_smry)[grep('_n_|_cmplt_',colnames(SW_LCNet_smry))])
 cols_new <- paste0(cols,rep('_LN',6))
 setnames(SW_LCNet_smry,cols,cols_new)
 
-SW_Net_smry <- cbind(SW_AnnNet_smry,SW_LCNet_smry)
+SW_1stYrNet_smry_el <- strat.mean.estimator(dt_ciac_proj,frame='Electric',period='FirstYear',return_SW = T)
+SW_1stYrNet_smry_el[,c('SW_n_net','SW_cmplt_net'):=NULL]
+SW_1stYrNet_smry_gas <- strat.mean.estimator(dt_ciac_proj,frame='Gas',period='FirstYear',return_SW = T)
+SW_1stYrNet_smry_gas[,c('SW_n_net','SW_cmplt_net'):=NULL]
+SW_1stYrNet_smry <- cbind(SW_1stYrNet_smry_el,SW_1stYrNet_smry_gas)
+cols <- setdiff(colnames(SW_1stYrNet_smry),colnames(SW_1stYrNet_smry)[grep('_n_|_cmplt_',colnames(SW_1stYrNet_smry))])
+cols_new <- paste0(cols,rep('_1N',6))
+setnames(SW_1stYrNet_smry,cols,cols_new)
 
-ntgr_cols <- colnames(SW_Net_smry)[grep('SW_mean_eval_NTGR',colnames(SW_Net_smry))]
-ntgr_cols_new <- gsub('_mean_eval_','_',ntgr_cols)
+SW_Net_smry <- cbind(SW_AnnNet_smry,SW_LCNet_smry,SW_1stYrNet_smry)
+
+ntgr_cols <- colnames(SW_Net_smry)[grep('SW_eval_NTGR',colnames(SW_Net_smry))]
+ntgr_cols_new <- gsub('_eval_','_',ntgr_cols)
 setnames(SW_Net_smry,ntgr_cols,ntgr_cols_new)
 ntgr_cols <- colnames(SW_Net_smry)[grep('NTGR',colnames(SW_Net_smry))]
 ntgr_cols_new <- gsub('_AN','_Ann',ntgr_cols)
 ntgr_cols_new <- gsub('_LN','_LC',ntgr_cols_new)
+ntgr_cols_new <- gsub('_1N','_1stYr',ntgr_cols_new)
 setnames(SW_Net_smry,ntgr_cols,ntgr_cols_new)
 
 SW_Net_smry <- cbind(SW_Net_smry,PA_Net_smry[,.(SW_rp_kWh_AN=roll_up(PA_eval_svgs_kWh_AN,PA_rp_kWh_AN),
@@ -293,38 +363,44 @@ SW_Net_smry <- cbind(SW_Net_smry,PA_Net_smry[,.(SW_rp_kWh_AN=roll_up(PA_eval_svg
 
 SW_Gross_smry <-fread(fname_import_SW)
 SW_smry <- cbind(SW_Gross_smry,SW_Net_smry)
-SW_smry[,colnames(SW_smry)[grepl('rp',colnames(SW_smry),ignore.case = T) & !grepl('kW_',colnames(SW_smry))],with=F]
-SW_smry[,colnames(SW_smry)[grep('RR|NTGR',colnames(SW_smry))],with=F]
+# SW_smry[,colnames(SW_smry)[grepl('rp',colnames(SW_smry),ignore.case = T) & !grepl('kW_',colnames(SW_smry))],with=F]
+# SW_smry[,colnames(SW_smry)[grep('RR|NTGR',colnames(SW_smry))],with=F]
 
-SW_smry_ar <- PA_smry_ar[,.(SW_exante_pct_AR_kWh=sum(PA_pop_kWh*PA_exante_pct_AR_kWh,na.rm=T)/sum(PA_pop_kWh,na.rm=T),
-                            SW_exante_pct_AR_kW=sum(PA_pop_kWh*PA_exante_pct_AR_kW,na.rm=T)/sum(PA_pop_kWh,na.rm=T),
-                            SW_exante_pct_AR_thm=sum(PA_pop_thm*PA_exante_pct_AR_thm,na.rm=T)/sum(PA_pop_thm,na.rm=T),
+SW_smry_ar <- PA_smry[,.(SW_exante_pct_AR_kWh=sum(PA_exante_pct_AR_kWh*PA_exante_LCNet_kWh,na.rm=T)/sum(PA_exante_LCNet_kWh,na.rm=T),
+                            SW_exante_pct_AR_kW=sum(PA_exante_pct_AR_kW*PA_exante_LCNet_kW,na.rm=T)/sum(PA_exante_LCNet_kW,na.rm=T),
+                            SW_exante_pct_AR_thm=sum(PA_exante_pct_AR_thm*PA_exante_LCNet_thm,na.rm=T)/sum(PA_exante_LCNet_thm,na.rm=T),
                              SW_exante_LCNet_kWh=sum(PA_exante_LCNet_kWh,na.rm=T),
                              SW_exante_LCNet_kW=sum(PA_exante_LCNet_kW,na.rm=T),
                              SW_exante_LCNet_thm=sum(PA_exante_LCNet_thm,na.rm=T),
-                            SW_expost_pct_AR_kWh=sum(PA_pop_kWh*PA_expost_pct_AR_kWh,na.rm=T)/sum(PA_pop_kWh,na.rm=T),
-                            SW_expost_pct_AR_kW=sum(PA_pop_kWh*PA_expost_pct_AR_kW,na.rm=T)/sum(PA_pop_kWh,na.rm=T),
-                            SW_expost_pct_AR_thm=sum(PA_pop_thm*PA_expost_pct_AR_thm,na.rm=T)/sum(PA_pop_thm,na.rm=T),
-                            SW_ep_LCNet_kWh=sum(PA_ep_LCNet_kWh,na.rm=T),
-                            SW_ep_LCNet_kW=sum(PA_ep_LCNet_kW,na.rm=T),
-                             SW_ep_LCNet_thm=sum(PA_ep_LCNet_thm,na.rm=T),
-                             SW_ep_AnnNet_kWh=sum(PA_ep_AnnNet_kWh,na.rm=T),
-                             SW_ep_AnnNet_kW=sum(PA_ep_AnnNet_kW,na.rm=T),
-                             SW_ep_AnnNet_thm=sum(PA_ep_AnnNet_thm,na.rm=T))]
-SW_smry_ar[,SW_expost_EUL_kWh:=SW_ep_LCNet_kWh/SW_ep_AnnNet_kWh]
-SW_smry_ar[,SW_expost_EUL_kW:=SW_ep_LCNet_kWh/SW_ep_AnnNet_kW]
-SW_smry_ar[,SW_expost_EUL_thm:=SW_ep_LCNet_thm/SW_ep_AnnNet_thm]
-keep_cols_ar_SW <- paste0(rep('SW_',12),keep_cols_ar_dom)
-keep_cols_ar_SW <- gsub('avg_','',keep_cols_ar_SW)
+                            SW_expost_pct_AR_kWh=sum(PA_ep_AR_kWh,na.rm=T)/sum(PA_eval_svgs_kWh_LN,na.rm=T),
+                            SW_expost_pct_AR_kW=sum(PA_ep_AR_kW,na.rm=T)/sum(PA_eval_svgs_kW_LN,na.rm=T),
+                            SW_expost_pct_AR_thm=sum(PA_ep_AR_thm,na.rm=T)/sum(PA_eval_svgs_thm_LN,na.rm=T),
+                            SW_ep_LCNet_kWh=sum(PA_eval_svgs_kWh_LN,na.rm=T),
+                            SW_ep_LCNet_kW=sum(PA_eval_svgs_kW_LN,na.rm=T),
+                             SW_ep_LCNet_thm=sum(PA_eval_svgs_thm_LN,na.rm=T),
+                             SW_ep_AnnNet_kWh=sum(PA_eval_svgs_kWh_AN,na.rm=T),
+                             SW_ep_AnnNet_kW=sum(PA_eval_svgs_kW_AN,na.rm=T),
+                             SW_ep_AnnNet_thm=sum(PA_eval_svgs_thm_AN,na.rm=T))]
+# SW_smry_ar[,SW_expost_EUL_kWh:=SW_ep_LCNet_kWh/SW_ep_AnnNet_kWh]
+# SW_smry_ar[,SW_expost_EUL_kW:=SW_ep_LCNet_kWh/SW_ep_AnnNet_kW]
+# SW_smry_ar[,SW_expost_EUL_thm:=SW_ep_LCNet_thm/SW_ep_AnnNet_thm]
+# keep_cols_ar_SW <- paste0(rep('SW_',12),keep_cols_ar_dom)
+# keep_cols_ar_SW <- setdiff(keep_cols_ar_SW,keep_cols_ar_SW[grep('dom',keep_cols_ar_SW)])
+# keep_cols_ar_SW <- gsub('avg_','',keep_cols_ar_SW)
+# SW_smry_ar[,(colnames(SW_smry_ar)[grep('pct',colnames(SW_smry_ar))]):=lapply(.SD,function(x) ifelse(is.nan(x),0,x)),.SDcols=colnames(SW_smry_ar)[grep('pct',colnames(SW_smry_ar))]]
+# SW_smry_ar[,(colnames(SW_smry_ar)[grep('EUL',colnames(SW_smry_ar))]):=lapply(.SD,function(x) ifelse(is.nan(x),NA,x)),.SDcols=colnames(SW_smry_ar)[grep('EUL',colnames(SW_smry_ar))]]
 
-SW_smry <- cbind(SW_smry_ar[,keep_cols_ar_SW,with=F],SW_smry)
+SW_smry <- cbind(SW_smry_ar[,colnames(SW_smry_ar)[grep('AR',colnames(SW_smry_ar))],with=F],SW_smry)
 SW_exante_Net_smry_el <- dt_ciac_proj[(Frame_Electric),.(SW_exante_kWh_AN=sum(ea_AnnNet_kWh,na.rm=T),SW_exante_kW_AN=sum(ea_AnnNet_kW,na.rm=T),
                 SW_exante_svgs_kWh_LN=sum(ea_LCNet_kWh,na.rm=T),SW_exante_svgs_kW_LN=sum(ea_LCNet_kW,na.rm=T))]
 SW_exante_Net_smry_gas <- dt_ciac_proj[(Frame_Gas),.(SW_exante_svgs_thm_AN=sum(ea_AnnNet_thm,na.rm=T),
                                                       SW_exante_svgs_thm_LN=sum(ea_LCNet_thm,na.rm=T))]
 SW_smry <- cbind(SW_smry,SW_exante_Net_smry_el,SW_exante_Net_smry_gas)
 SW_smry[,colnames(SW_smry)[grep('AR',colnames(SW_smry))],with=F]
-write.csv(SW_smry,fname_export_SW,row.names = F)
+if (bln_write) write.csv(SW_smry,fname_export_SW,row.names = F)
 
+PA_smry[,c('PA',colnames(PA_smry)[grep('PA_NTGR.*_LC',colnames(PA_smry))]),with=F]
+PA_smry[,c('PA',colnames(PA_smry)[grep('PA_eval_svgs.*_LN',colnames(PA_smry))]),with=F]
 PA_smry[,c('PA',colnames(PA_smry)[grep('(rp)|(NTGR.*_LC)',colnames(PA_smry))]),with=F]
-
+PA_smry[,c('PA',colnames(PA_smry)[grep('1',colnames(PA_smry))]),with=F]
+SW_smry[,colnames(SW_smry)[grep('1',colnames(SW_smry))],with=F]

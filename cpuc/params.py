@@ -29,9 +29,13 @@ RPT_TABLE_START_RANGE_MARKER = '=rTstartString'
 D0_DATABASE_REVIEW_FILE = r'Z:\Favorites\CPUC10 (Group D - Custom EM&V)\4 Deliverables\00 - 2017 Evaluation\ESPI input prep\ATR_2017_All_Custom-Filled_v5.csv'
 D0_DATABASE_REVIEW_EXTENDED_FILE = r'Z:\Favorites\CPUC10 (Group D - Custom EM&V)\4 Deliverables\00 - 2017 Evaluation\Database Review\E350 Data Additions\Raw Data Files\Report Data DB Review.csv'
 D0_ATR_SOURCE_FILE =  r'Z:\Favorites\CPUC10 (Group D - Custom EM&V)\4 Deliverables\00 - 2017 Evaluation\ESPI input prep\downloads\ATR\ATR_2017.csv'
-D0_FIELD_CROSS_REF_FILE = r'Z:\Folders\Projects\CPUC10 (Group D - Custom EM&V)\4 Deliverables\00 - 2017 Evaluation\ESPI input prep\FieldNameCrossRef.xlsx'
+# D0_FIELD_CROSS_REF_FILE = r'Z:\Folders\Projects\CPUC10 (Group D - Custom EM&V)\4 Deliverables\00 - 2017 Evaluation\ESPI input prep\FieldNameCrossRef.xlsx'
+D0_FIELD_CROSS_REF_FILE = r'Z:\Favorites\CPUC10 (Group D - Custom EM&V)\4 Deliverables\00 - 2017 Evaluation\ESPI input prep\FieldNameCrossRef.xlsx'
 CIAC_2018_DATA_DEF_FILE = r'Z:\Favorites\CPUC10 (Group D - Custom EM&V)\4 Deliverables\11 - Draft and Final Evaluation Reports\CIAC 2018\Design\DataSourceDef.xlsx'
 CIAC_2018_PREFILL_DRIVER = r"Z:\Favorites\CPUC10 (Group D - Custom EM&V)\4 Deliverables\__ - Cross Cutting\Evaluation Tools\Site-Specific Tools\Treatment Templates\prefill_driver_dev.xlsx"
+CIAC_2019_REPORT_DESIGN_GOOGLE_ID = '1HGPFgrjXTdHfRNLmcHxxUXobUJ0BEMcT45JuJCJb78g'
+CIAC_2019_DATA_DEF_FILE = r'Z:\Favorites\CPUC10 (Group D - Custom EM&V)\4 Deliverables\11 - Draft and Final Evaluation Reports\CIAC 2019\Design\DataSourceDef_CIAC2019.xlsx'
+
 
 WORKBOOK_TEMPLATES_PATH = os.path.join(
     DELIVERABLES_PATH,

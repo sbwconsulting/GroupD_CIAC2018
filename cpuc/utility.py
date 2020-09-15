@@ -2,19 +2,78 @@
 import logging
 import numpy as np
 from io import StringIO
+from io import BytesIO
 import os.path
 import re
+from zipfile import ZipFile
+from datetime import datetime
 
 import pandas as pd
+import psycopg2
+from sqlalchemy import MetaData
+from sqlalchemy import Table
+from sqlalchemy import Boolean
+# from sqlalchemy import Column
+# from sqlalchemy import column
+from sqlalchemy import DateTime
+from sqlalchemy import Float
+# from sqlalchemy import ForeignKey
+from sqlalchemy import Integer
+# from sqlalchemy import MetaData
+from sqlalchemy import String
+# from sqlalchemy import Table
+from sqlalchemy import Text
+# from sqlalchemy import text
+# from sqlalchemy import select
 
+
+import cpuc.params as params #Try to remove this
+from cpuc.db import engine
 from cpuc.sharefileapi import ShareFileSession
 from cpuc.sharefileapi import SHAREFILE_OPTIONS
+from cpuc.postgreutil import df_to_db
 import cpuc.workbookfunctions as wf
 from cpuc.workbookfunctions import openworkbook
+from cpuc.workbookfunctions import getSampleControlFile
+from cpuc.postgreutil import run_sql
 
+from cpuc.sensitive import AWS_POSTGRES_OPTIONS
+#pull these function to a separate file
+from cpuc.project_tracker import download_data 
+from cpuc.project_tracker import get_table_list
 
 #import cpuc.workbookfunctions as wf
 #from read_cpr_files import rowtolist
+
+# cpuc types
+# "character"
+# "boolean"
+# "text":str
+# "bigint"
+# "double precision"
+# "date"
+# "timestamp without time zone"
+# "character varying"
+# "integer" : int
+
+POSTGRE_PYTHON_MAPPING = {
+    'character' : str,
+    'boolean' : bool,
+    'text' : str,
+    'bigint' : int,
+    'double precision' : float,
+    'date' : datetime,
+    'timestamp without time zone' : datetime,
+    'character varying' : str,
+    'integer' : int
+}
+
+class oLoggger():
+     def __init__(self, **kwargs):
+        self.pathid = ''
+        self.filename = ''
+        self.logfile = None
+
 
 def df_to_csv_sharefile(df, zfilepath):
     """
@@ -33,8 +92,9 @@ def df_to_csv_sharefile(df, zfilepath):
     folder_item = sfsession.get_item_by_local_favorites_path(pathroot)
     sfsession.upload_file(folder_item.id, filename, out_io)
 
-def dftokeyvaluedict(df, keyfield, valuefield):
+def xdftokeyvaluedict(df, keyfield, valuefield):
     """
+    Moved to util_min file
     transform a dataframe to a dict in the form of 
      {'keyfield1': 'valuefield1', 'keyfield2': 'valuefield2', ...}
      Pass in the two column names that are to be the key and value
@@ -48,6 +108,31 @@ def dftokeyvaluedict(df, keyfield, valuefield):
         fielddict.set_index(keyfield, inplace=True)
         fielddict = fielddict.to_dict()[valuefield]
     return fielddict
+
+
+def download_tables(sfsession:ShareFileSession, df_list=None, criteriafield='download', groupfield='tblroot', downloadpathfield='downloadpath'):
+    """
+    make local copies of the db tables
+    """
+
+    if not isinstance(df_list, pd.DataFrame):
+        #open driver and get list, limit to active
+        df_list = get_df_from_driver(filepath=params.READ_WORKBOOKS_TEMPLATE_LIST_FILE, sheet='read', querystr='active=="y"')
+        if not isinstance(df_list, pd.DataFrame):
+            return False
+    #Shouldn't this be checking download?
+    # filelist_grp = df_list[df_list['overwritetracker'] == True].groupby('tblroot')
+    filelist_grp = df_list[df_list[criteriafield] == True].groupby(groupfield)
+    alltablelist = get_table_list(nameonly=True)
+    for tbl, filerow in filelist_grp:            
+        tableroot = tbl
+        filepathroot = filerow.downloadpath.values[0]            
+        #get list of tables with this root
+        tablelist = [x for x in alltablelist if tableroot in x]
+        for table in tablelist:
+            filepath = filepathroot + '\\' + table + '.csv'
+            #logging.warning(f'INFO - downloading {table} to {filepath}')
+            download_data(table, filepath, sfsession)
 
 def formatws(wb, cell = 'A1', zoomlvl = 100, shtnames = None):
     '''
@@ -74,7 +159,7 @@ def get_df_from_driver(filepath:str, sheet:str, querystr:str=None):
         filepath: Path to the driverfile
         sheet: Sheet with the list
         querystr: Optional Query string to limit the list. The form of the query string is 'active == "y"'
-
+        Assumes tables starts with first row. If not try using 
     Returns a dataframe
     """
     filelist = None
@@ -100,6 +185,16 @@ def get_df_from_driver(filepath:str, sheet:str, querystr:str=None):
     sfsession = None
     return filelist
 
+def get_item_mod_date(item):
+    """ Return mod date if present, otherwise return creation date """
+
+    if 'ClientModifiedDate' in item.data:
+        moddate = item.data['ClientModifiedDate']
+    else:
+        moddate = item.data['CreationDate']
+
+    return moddate
+
 def input_to_str_list(stuff, sep:str=','):
     """
     converts character separated input into list of string elements
@@ -119,6 +214,15 @@ def input_to_str_list(stuff, sep:str=','):
         return [x.strip() for x in stuff.split(sep)]
     except: #above will fail for single number
         return [str(stuff).replace('.0','')]
+
+def is_archive_empty(filepath):
+    """returns true if the archive is empty
+    filepath can be a string or filelike object
+    """
+    archive = ZipFile(filepath)
+    names = archive.namelist()
+    return len(names)==0
+
 
 def replace_strings_with_spaces(string):
     """
@@ -296,3 +400,268 @@ def excel_to_df(filepath):
             return None
     
     return df
+
+def create_folder(folder):
+        """
+        Create a folder. Fills in intermediate directories if they don't
+        exist.
+        """
+        #TODO update to use sharefile api
+        try:
+            os.makedirs(folder)
+            logging.info('Created {}'.format(folder))
+        except FileExistsError:
+            logging.info('{} already exists, skipping'.format(folder))
+
+def download_db_data(sql, filepath, delimiter=',', quote='"'):
+    """
+    Downlaod data from db to a csv file
+    Pass in sql statement and local file path
+    This is slower than download_data so don't recommend use for full tables.
+    Must be connected to vpn or be coming from a whitelisted IP address to use
+    """
+
+    db_conn = psycopg2.connect(host=AWS_POSTGRES_OPTIONS['host'], port=AWS_POSTGRES_OPTIONS['port'], 
+        dbname=AWS_POSTGRES_OPTIONS['db'], user=AWS_POSTGRES_OPTIONS['user'], password=AWS_POSTGRES_OPTIONS['password'])
+    db_cursor = db_conn.cursor()
+
+    fileobj = StringIO()
+
+    # SQL_for_file_output = f"COPY ({sql}) TO STDOUT WITH CSV HEADER"
+    SQL_for_file_output = f"COPY ({sql}) TO STDOUT WITH (FORMAT csv, DELIMITER '{delimiter}', QUOTE '{quote}', HEADER TRUE)"
+    # WITH (FORMAT csv, DELIMITER '|', QUOTE '^', HEADER FALSE)"
+    out_file = StringIO()
+    folderpath, filename = os.path.split(filepath)
+    sfsession = ShareFileSession(SHAREFILE_OPTIONS)
+    folder_item = sfsession.get_item_by_local_favorites_path(folderpath)
+    if not folder_item:
+        msg = f'problem with {filepath}'
+        print(msg)
+        returnval = msg
+    
+    try:
+        # WITH Open(t_path_n_file, 'w') as f_output:
+            # db_cursor.copy_expert(SQL_for_file_output, f_output)
+        db_cursor.copy_expert(SQL_for_file_output, fileobj)
+        #upload fileobj to sharefile
+        sfsession.upload_file(folder_item.id, filename, fileobj) 
+        returnval = True           
+
+    except psycopg2.Error as e:
+        msg = f"Error: {e}/n query we ran: {sql}/n t_path_n_file: {filepath}"
+        print(msg)
+        # return render_template("error.html", t_message = t_message)
+        returnval = msg
+    db_cursor.close()
+    db_conn.close()
+
+    return returnval
+
+def copy_deliverable_code(driverfile:str, sheet:str=None, srcfield='srcpath', destfield='destfolder', listfilter:str=None):
+    """
+    copy files as defined in passed driver file (path)
+    uses internal filesystem not cloud for copy(since might be stuff not on system), but uses cloud for driver processing   
+    """
+    #open driver file
+    df = get_df_from_driver(driverfile, sheet, listfilter)
+    if df is None:
+        print(f'problem opening driver file {driverfile}')
+        return False
+
+    #go through the files
+    for _, row in df.iterrows():        
+        if os.path.exists(row[srcfield]):
+            try:
+                name = os.path.basename(row[srcfield])
+                create_folder(row[destfield])
+                dest = os.path.join(
+                    row[destfield],
+                    name
+                )        
+                copyfile(row[srcfield], dest)
+                copystat(row[srcfield], dest) #copy the file date mod etc.
+            #TODO add error logging
+            except PermissionError:
+                print(f'Permission error for {row[srcfield]}')
+            except Exception as e:                
+                print(f'Error for {row[srcfield]}: {e}')
+        else:
+            print(f'src missing {row[srcfield]}')
+    
+
+def run_r_code(filepath):
+    """
+    run r code to generate tables
+    """
+
+    #run faith's r scripts
+    pgm = 'Rscript.exe'
+    rcommandbase = []
+    rcommandbase.append(pgm)
+    rcommandbase.append("--vanilla")
+    path = f'"{filepath}"'
+    # rcommand = rcommandbase + [r'"Z:\Favorites\CPUC10 (Group D - Custom EM&V)\4 Deliverables\09 - Ex-Post Evaluated Gross Savings Estimates\CIAC\2018 Evaluation\Extrapolation\extrapolator_gross.R"']
+    rcommand = rcommandbase + [path]
+    rpath = r'C:\Program Files\R\R-3.5.2\bin' + '\\' + pgm
+    #result = subprocess.run([" ".join(rcommand)], stdout=subprocess.PIPE)
+    cmd = ' '.join(rcommand)
+    print(cmd)
+    #TODO see if this can be changed to use sharefile so at a minimum it can be run on a cloud machine, if not cloud function
+    #Doesn't matter the R code is not set up to run in the cloud :(
+    # cmditem = sfsession.get_io_version()
+    result = subprocess.run(cmd, executable=rpath, stdout=subprocess.PIPE)
+    #subprocess.call ([r"C:\Program Files\R\R-3.5.2\bin\Rscript.exe", "--vanilla", r"C:\Users\gina\OneDrive - sbw consulting\cpuc10\rtest.R"])
+    #subprocess.call (["/usr/bin/Rscript", "--vanilla", "/pathto/MyrScript.r"])
+    #subprocess.call (rcommand)
+    
+    print(result)
+    if result.returncode != 0:
+        print(f'problem running script:{result.returncode}')
+    #or maybe 
+    #subprocess.call (["/usr/bin/Rscript", "--vanilla", "/pathto/MyrScript.r"])
+
+def upload_excel_data(df_data):
+    """   
+    upload data for everything defined datadef (a pandas dataframe)
+    Assumes a specific columns are present  in datadef: TableName, Source, IndexField, sheet, startrow
+    Okay if additional columns present
+    Will drop unnamed columns. So don't include 'Unnamed' in any field names
+
+    """
+    sfsession = ShareFileSession(SHAREFILE_OPTIONS)
+
+    for tablerow in df_data.itertuples():
+        tablename = tablerow.TableName
+        key = tablerow.IndexField        
+        file_item = sfsession.get_io_version(tablerow.Source)
+        #get list of headers in the file
+        df = pd.read_excel(io=file_item.io_data,sheet_name=tablerow.sheet, skiprows=tablerow.startrow-1, nrows=1)
+        excelheaderlist = [x for x in df.columns if 'Unnamed' not in x]
+        #get columns and types from the db
+        sql = 'SELECT column_name, data_type FROM information_schema.columns '
+        sql += f"WHERE table_name = '{tablename}' AND table_schema = 'cpuc';"
+        results = run_sql(sql, returnresults=True)
+
+        tabletypedict = {}
+        #Create type list for excel read
+        for item in excelheaderlist:
+            try:
+                dbtype = [j for i,j in results if i == item][0]
+                tabletypedict[item] = POSTGRE_PYTHON_MAPPING[dbtype]
+            except:
+                print(f'{item} is not in database table, assiging str type')
+                #Should this be dropped so pandas can just pick the best type?
+                tabletypedict[item] = str        
+
+        df = pd.read_excel(io=file_item.io_data,sheet_name=tablerow.sheet, skiprows=tablerow.startrow-1, dtype=tabletypedict)
+        
+        #drop unnamed columns
+        try:
+            df = df.loc[:, ~df.columns.str.match('Unnamed')]
+        except:
+            # print('no unnamed')
+            pass
+
+        #convert NANs to None
+        df = df.where(pd.notnull(df), None)
+        df_to_db(df=df, tablename=tablename, key=key)
+
+def isMergedCell(cell):
+    """
+    Returns if the cell is part of a merged cell
+    """
+    for item in sorted(cell.parent.merged_cells.ranges):
+        if cell.row >= item.bounds[1] and cell.row <= item.bounds[3] \
+            and cell.column >= item.bounds[0] and cell.column <= item.bounds[2]: 
+        # if item.left[0][0] == cell.row or item.left[0][1] == cell.column:     
+            return True
+    return False
+
+def db_to_excel(filepath):
+    """
+    Move data from the db (or other source) to excel files as defined in the passed excel filename
+    The passed workbook must have a sheet named spec and columns named active, srctype, tablename, srcindex, srcfields, destindex, destfile, sheet, startrow, fields
+
+    """
+    sfsession = ShareFileSession(SHAREFILE_OPTIONS)
+    #open workbook
+    control_item = sfsession.get_io_version(filepath)
+    if not control_item:
+        logging.warning(f'driver file {filepath} not found for db_to_excel')
+        return False
+    control_wb = wf.openworkbook(control_item.io_data)
+    ws = control_wb['spec']
+    filelist = wf.convertwstodf(ws)
+    filelist = filelist.query('active == "y"')
+    control_wb.close()
+    control_item = None
+    #gather needed parts
+
+    #TODO sort list so all changes to a workbook can be done and then that workbook saved rather than needing to open and close for each write
+    for filerow in filelist.itertuples():
+        excelpath = filerow.destfile
+        localname = os.path.basename(excelpath)
+        headerrow = filerow.headerrow
+        sheet = filerow.sheet
+        fields = filerow.fields
+        table = filerow.tablename
+        srcindex = filerow.srcindex
+        dstindex = filerow.destindex
+        wkb_item = sfsession.get_io_version(excelpath)
+        hasvba = '.xlsm' in excelpath
+        srcfields = filerow.srcfields
+        srctype = filerow.srctype
+
+        if srctype == 'db':
+        #get data from db
+            data = pd.read_sql(table, engine)
+        elif srctype == 'csv':
+            src_item = sfsession.get_io_version(table)
+            if not src_item:
+                logging.warning(f'file {table} not found for db_to_excel')
+                continue
+            src_item.io_data.seek(0)
+            data = pd.read_csv(src_item.io_data)
+        elif srctype == 'excel':
+            src_item = sfsession.get_io_version(table)
+            if not src_item:
+                logging.warning(f'file {table} not found for db_to_excel')
+                continue
+            srcsheet = filerow.srcsheet
+            srcrow = filerow.srcheaderrow
+            data = pd.read_excel(src_item.io_data, sheet_name=srcsheet, start_row=srcrow-1)
+           
+        srcfieldlist = srcfields.split(',')
+        srcfieldlist.append(srcindex)
+        data_fields = data[srcfieldlist]
+        dstfieldlist = fields.split(',')
+        dstfieldlist.append(dstindex)
+        #remap src field names to dst field names
+        data_fields.columns = dstfieldlist
+        datalist = data_fields.to_dict('records')
+        
+        #this is to figure out where data should go, but since it uses values, can't save
+        ws_vals = getSampleControlFile(filepath = wkb_item.io_data,
+            wks = sheet,
+            headerrow = headerrow, #not used but passing it anyway
+            asdf = False,
+            usevalues = True)
+        #this is the one where values actually get written to
+        ws_out = getSampleControlFile(filepath = wkb_item.io_data,
+            wks = sheet,
+            headerrow = headerrow, #not used but passing it anyway
+            asdf = False,
+            usevalues = False, 
+            usevba=hasvba)
+        print(f'starting to write to excel {fields} {str(datetime.now())}')
+        ws_results = writetoexcel(ws_vals = ws_vals, ws_out = ws_out, header_row = headerrow, datalist = datalist, key = dstindex)
+        print(f'done writing  to excel {str(datetime.now())}')
+        if not ws_results:
+            print('bad results')
+        else:
+            tracker_io = BytesIO()
+            ws_results.parent.save(tracker_io)
+            #upload to sf
+            wkb_folderID = wkb_item.data['Parent']['Id']
+            sfsession.upload_file(wkb_folderID, localname, tracker_io)
+            print(f'done uploading to sharefile {str(datetime.now())}')

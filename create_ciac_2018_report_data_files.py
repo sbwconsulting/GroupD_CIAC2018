@@ -1,50 +1,43 @@
 #Create the files for ciac2018
 import logging
-from io import BytesIO
-from io import StringIO
-import os.path
-import time
-import subprocess
 import math
+import os.path
 import re
-from datetime import datetime  #to get current time
-from shutil import copyfile
+import subprocess
+import time
+from datetime import datetime  # to get current time
+from io import BytesIO, StringIO
+from shutil import copyfile, copystat
 
-import sqlalchemy as db
-import pandas as pd
-import numpy as np
 import altair as alt
-import plotly.graph_objects as go
-import plotly.express as px
-from plotly.subplots import make_subplots
-import plotly.io as pio
 import matplotlib.pyplot as plt
+import numpy as np
+import plotly.express as px
+import plotly.graph_objects as go
+import plotly.io as pio
 import seaborn as sns
+import sqlalchemy as db
+from plotly.subplots import make_subplots
 
-from cpuc.sharefileapi import ShareFileSession
-from cpuc.sharefileapi import SHAREFILE_OPTIONS
-from cpuc.mylogging import create_logfile
 import cpuc.params as params
-
-from cpuc.utility import df_to_csv_sharefile
-from cpuc.utility import replace_strings_with_spaces
-from cpuc.utility import swap_out_strings
-from cpuc.utility import get_df_from_driver
-# from cpuc.utility import get_datadef_source_info #Has dependencies to work out over there
-from cpuc.workbookfunctions import convertwstodf
-from cpuc.workbookfunctions import openworkbook
-from cpuc.workbookfunctions import getSampleControlFile
-from cpuc.altair_theme import sbw_cpuc
-from prefill_workbooks import calculate_workbooks
-from prefill_workbooks import get_df_from_src
-from upload_workbooks import upload_ciac_trackers
-from upload_workbooks import download_data
 import cpuc.plots as vs
+import pandas as pd
 from cpuc.altair_theme import sbw_cpuc
+from cpuc.mylogging import create_logfile
 # from cpuc.plots import vis
 # from cpuc.plots import d_axis
 # from cpuc.plots import facet
 from cpuc.plots import mkplot1
+from cpuc.sharefileapi import SHAREFILE_OPTIONS, ShareFileSession
+from cpuc.utility import (create_folder, df_to_csv_sharefile,
+                          get_df_from_driver, replace_strings_with_spaces,
+                          swap_out_strings)
+# from cpuc.utility import get_datadef_source_info #Has dependencies to work out over there
+from cpuc.workbookfunctions import (convertwstodf, getSampleControlFile,
+                                    openworkbook)
+from createReportData import remapdata
+from prefill_workbooks import calculate_workbooks, get_df_from_src
+from upload_workbooks import download_data, upload_ciac_trackers
 
 alt.themes.register('sbw_cpuc', sbw_cpuc)
 alt.themes.enable('sbw_cpuc')
@@ -809,6 +802,8 @@ def add_np_where(out_df, dfname, row, partflag, outcol, operators, stringops):
                     pass
                     #cbit = p
                     #nojoin = True
+                elif p[0] =="'": #for strings
+                    pass
                 elif p not in operators and '==' not in p and '!=' not in p and '.' not in p and 'None' not in p and not is_number(p):
                     parts[parts.index(p)] = "{}['{}']".format(dfname,p)
                 elif p in stringops:
@@ -905,9 +900,9 @@ def is_number(string):
     except ValueError:
         return False
 
-def get_datadef_source_info(listdef):
+def get_datadef_source_info(listdef, defpath=params.CIAC_2018_DATA_DEF_FILE):
     """
-    Pass in a list of dicts defining the desired objects to return from the datadef list
+    Pass in a list of dicts defining the desired objects to return from the datadef list and the path to the def file
         Dict form is
             name: name for the return dict key that gets returned
             src: the sourcename
@@ -920,12 +915,12 @@ def get_datadef_source_info(listdef):
 
     sfsession = ShareFileSession(SHAREFILE_OPTIONS)
     #open map file  
-    map_item = sfsession.get_io_version(params.CIAC_2018_DATA_DEF_FILE)
+    map_item = sfsession.get_io_version(defpath)
     if not map_item:
         #Try again
-        map_item = sfsession.get_io_version(params.CIAC_2018_DATA_DEF_FILE)
+        map_item = sfsession.get_io_version(defpath)
         if not map_item:
-            print(f'problem retrieving {params.CIAC_2018_DATA_DEF_FILE}')
+            print(f'problem retrieving {defpath}')
             return None
     map_wb = openworkbook(map_item.io_data)
     ws_src = map_wb['SourceDef']
@@ -957,7 +952,15 @@ def get_datadef_source_info(listdef):
         if filetype == 'csv':
             df_out = pd.read_csv(src_item.io_data)
         elif filetype == 'xls':
-            df_out = pd.read_excel(src_item.io_data, sheet_name=item_list.iloc[0]['sheet'], header=int(item_list.iloc[0]['startrow'])-1)
+            sheetname = item_list.iloc[0]['sheet']
+            try:
+                headerrow = int(item_list.iloc[0]['startrow'])-1
+            except:
+                headerrow = 1
+            if sheetname:
+                df_out = pd.read_excel(src_item.io_data, sheet_name=sheetname, header=headerrow)
+            else:
+                df_out = pd.read_excel(src_item.io_data)
         else:
             returndict[item['name']] = None
             continue
@@ -1102,28 +1105,34 @@ def create_specialtables(sfsession:ShareFileSession):
 def copy_deliverable_code(driverfile:str, sheet:str=None, srcfield='srcpath', destfield='destfolder', listfilter:str=None):
     """
     copy files as defined in passed driver file (path)
-    uses internal filesystem not cloud for copy(since might be stuff not on system), but uses cloud for driver processing   
+    uses internal filesystem not cloud for copy(since might be stuff not in cloud (sharefile)), but uses cloud for driver processing   
     """
     #open driver file
-    df = get_df_from_driver(params.CIAC_2018_DATA_DEF_FILE, sheet, listfilter)
+    df = get_df_from_driver(driverfile, sheet, listfilter)
+    if df is None:
+        print(f'problem opening driver file {driverfile}')
+        return False
 
     #go through the files
     for _, row in df.iterrows():        
-        try:
-            name = os.path.basename(row[srcfield])
-            dest = os.path.join(
-                row[destfield],
-                name
-            )        
-            copyfile(row[srcfield], dest)
-        #TODO add error logging
-        except PermissionError:
-            print(f'Permission error for {row[srcfield]}')
-        except Exception as e:
-            print(f'Error for {row[srcfield]}: {e}')
-
+        if os.path.exists(row[srcfield]):
+            try:
+                name = os.path.basename(row[srcfield])
+                create_folder(row[destfield])
+                dest = os.path.join(
+                    row[destfield],
+                    name
+                )        
+                copyfile(row[srcfield], dest)
+                copystat(row[srcfield], dest) #copy the file date mod etc.
+            #TODO add error logging
+            except PermissionError:
+                print(f'Permission error for {row[srcfield]}')
+            except Exception as e:                
+                print(f'Error for {row[srcfield]}: {e}')
+        else:
+            print(f'src missing {row[srcfield]}')
     
-
 
 def run_r_code(filepath):
     """
@@ -1668,7 +1677,7 @@ def create_ciac2018_dist_savings(captions, outputfolder=None, printdata=False):
 
         vs.facet(spec)
 
-def ciac2018_dist_savings_plotly(captions, outputfolder=None, printdata=False):
+def ciac2018_dist_savings_plotly(captions, outputfolder=None, printdata=True):
     """
     Create the distribution savings visualization for ciac2018
     Pass in the list of captions for the output files
@@ -3447,6 +3456,7 @@ def create_ExSumAR_plotly(captions, outputfolder=None, printdata=True):
         
 
         if printdata:
+  
             pathroot= r"Z:\Favorites\CPUC10 (Group D - Custom EM&V)\8 PII\11 - Draft and Final Evaluation Reports\CIAC2018\Data"
             filename =  caption + '-' + '.csv'
             tmppath = os.path.join(pathroot, filename)
@@ -3586,7 +3596,7 @@ def make_charts():
     ]
 
     # create_ciac2018_reasons_diff(captions)
-    create_ciac2018_reasons_diff_plotly(captions, printdata=printdata)
+    # create_ciac2018_reasons_diff_plotly(captions, printdata=printdata)
 
     captions = [
         'State_Primary Reasons for Differences in First Baseline (All Claims) Gross Savings (kWh)', 
@@ -3611,13 +3621,293 @@ def make_charts():
 
     captions = ['kwh rr and ntgr', 'thm rr and ntgr']
     # create_ciac2018_ExSum_grrntgr_bar(captions, printdata=False)
-    # mkplot_ciac2018_ExSum_grrntgr_bar(captions, printdata=False)
+    mkplot_ciac2018_ExSum_grrntgr_bar(captions, printdata=True)
 
     captions = ['test kwh gross eval vs claim']#, 'kwh net g plot test', 'thm gross test', 'thm net test']
     # create_ciac2018_ExSumm_savings_scatter(captions, printdata=printdata)
 
     captions = ['combined test']
     # create_ciac2018_ExSumm_savings_scatter_combined(captions, printdata=printdata)
+
+def check_rollup_totals():
+    """
+    create qc table that shows savings differences between aggregation levels
+    """
+    srclist = [
+        {'name':'domain', 'src':'domainpop', 'return':'df'},
+        {'name':'pa', 'src':'papop', 'return':'df'},
+        # {'name':'pa', 'src':'patest', 'return':'df'}, #For getting the answers to go to zero for testing
+        {'name':'state', 'src':'state_summary', 'return':'df'},
+        # {'name':'state', 'src':'swtest', 'return':'df'},
+        {'name':'map', 'src':'agg_map', 'return':'df'},
+        # {'name':'output', 'src':'agg_subtotal_variance', 'return':'path'},        
+    ]
+
+    results = get_datadef_source_info(srclist)
+    df_domain = results['domain']
+    df_pa = results['pa']
+    df_state = results['state']
+    df_map = results['map']
+    # outpathname = results['output']
+    #make sure these match what is in the map file
+    dommap = 'Domain'
+    pamap = 'PA'
+    swmap = 'State'
+    friendly = 'FullHeader'
+    agglevel = 'agglevel'  #not header, but a field
+
+    df_map_nopa = df_map[df_map[dommap] != 'PA']
+    # p = re.compile('dom_.*?(AN|LN|AG|LG|1G)')
+    # domfields = [s for s in df_domain.columns if p.match(s)]
+    # domfields.append('PA')
+    domfields = df_map[df_map[dommap].notnull()][dommap].tolist()
+    df_domain_trunc = df_domain[domfields]
+    #aggregate domain by PA
+    df_domain_pa = df_domain_trunc.groupby(['PA']).sum().reset_index()
+    df_domain_sw = pd.DataFrame(df_domain_trunc.sum()).T
+    df_domain_sw.drop('PA', axis=1, inplace=True)
+    
+    df_pa_sw = pd.DataFrame(df_pa.sum()).T
+    df_pa_sw.drop('PA', axis=1, inplace=True)
+    #rename fields so they match the pa table
+    df_domain_pa_remapped = remapdata(df_map, dommap, pamap, df_domain_pa)
+    #rename to match statewide
+    df_domain_sw_remap = remapdata(df_map_nopa, dommap, swmap, df_domain_sw)
+    df_pa_sw_remap = remapdata(df_map_nopa, pamap, swmap, df_pa_sw)
+    
+    #Prep PA
+    df_pa = df_pa[df_domain_pa_remapped.columns]
+    df_domain_pa_remapped.set_index('PA', inplace=True)
+    df_pa.set_index('PA', inplace=True)
+    #Prep SW
+    df_sw = df_state[df_domain_sw_remap.columns]
+
+    print(f'num shape {df_domain_pa_remapped.shape}, den shape {df_pa.shape}')
+    print(f'num shape {df_domain_sw_remap.shape}, den shape {df_sw.shape}')
+    print(f'num shape {df_pa_sw_remap.shape}, den shape {df_sw.shape}')
+    if df_domain_pa_remapped.shape == df_pa.shape:
+        domainpct = 1 - (df_domain_pa_remapped / df_pa)
+    else:
+        print(f'Shapes are different for df_domain_pa_remapped/df_pa. num shape {df_domain_pa_remapped.shape}, den shape {df_pa.shape}')
+    if df_domain_sw_remap.shape == df_sw.shape:
+        dom_st_pct = 1 - (df_domain_sw_remap / df_sw)
+    else:
+        print(f'Shapes are different for df_domain_sw_remap/df_sw. num shape {df_domain_sw_remap.shape}, den shape {df_sw.shape}')
+    if df_pa_sw_remap.shape == df_sw.shape:
+        pa_st_pct = 1 - (df_pa_sw_remap / df_sw)
+    else:
+        print(f'Shapes are different for df_pa_sw_remap/df_sw. num shape {df_pa_sw_remap.shape}, den shape {df_sw.shape}')
+    
+    # dom_st_pct = 1 - (df_domain_sw_remap / df_sw)
+    # pa_st_pct = 1 - (df_pa_sw_remap / df_sw)
+
+    #combine dom and pa into single df
+    dom_st_pct[agglevel] = 'domain'
+    pa_st_pct[agglevel] = 'pa'
+    st_pct = pd.concat([dom_st_pct, pa_st_pct])
+    df_domain_pa_remapped.to_csv(r'Z:\Favorites\CPUC10 (Group D - Custom EM&V)\4 Deliverables\11 - Draft and Final Evaluation Reports\CIAC 2018\Design\Test\df_domain_pa_remapped.csv')
+    df_domain_sw_remap.to_csv(r'Z:\Favorites\CPUC10 (Group D - Custom EM&V)\4 Deliverables\11 - Draft and Final Evaluation Reports\CIAC 2018\Design\Test\df_domain_sw_remap.csv')
+    # df_pa.to_csv(r'Z:\Favorites\CPUC10 (Group D - Custom EM&V)\4 Deliverables\11 - Draft and Final Evaluation Reports\CIAC 2018\Design\Test\df_pa.csv')
+    # domaindiff.to_csv(r'Z:\Favorites\CPUC10 (Group D - Custom EM&V)\4 Deliverables\11 - Draft and Final Evaluation Reports\CIAC 2018\Design\Test\domaindiff.csv')
+    domainpct.to_csv(r'Z:\Favorites\CPUC10 (Group D - Custom EM&V)\4 Deliverables\11 - Draft and Final Evaluation Reports\CIAC 2018\Design\Test\domain_papct.csv')
+    st_pct.to_csv(r'Z:\Favorites\CPUC10 (Group D - Custom EM&V)\4 Deliverables\11 - Draft and Final Evaluation Reports\CIAC 2018\Design\Test\sw_pct.csv')
+    domainpct = domainpct.reset_index()
+    domainpct_friendly = remapdata(df_map, pamap, friendly, domainpct)
+
+    # dom_st_pct_friendly = remapdata(df_map_nopa, swmap, friendly, dom_st_pct)
+    # pa_st_pct_friendly = remapdata(df_map_nopa, swmap, friendly, pa_st_pct)
+    # pa_st_pct_friendly.to_csv(r'Z:\Favorites\CPUC10 (Group D - Custom EM&V)\4 Deliverables\11 - Draft and Final Evaluation Reports\CIAC 2018\Design\Test\pa_sw_pct_friendly.csv')
+
+    st_pct_friendly = remapdata(df_map_nopa, swmap, friendly, st_pct)
+    domainpct_friendly.to_csv(r'Z:\Favorites\CPUC10 (Group D - Custom EM&V)\4 Deliverables\11 - Draft and Final Evaluation Reports\CIAC 2018\Design\Test\domain_papct_friendly.csv', index=False)
+    st_pct_friendly.to_csv(r'Z:\Favorites\CPUC10 (Group D - Custom EM&V)\4 Deliverables\11 - Draft and Final Evaluation Reports\CIAC 2018\Design\Test\sw_pct_friendly.csv', index=False)
+        
+    print('doh')
+
+def check_rollup_totals_multiple():
+    """
+    create qc table that shows savings differences between aggregation levels
+    """
+
+    #build list of files
+    sources = [
+        ['domain_4-1', 'papop_4-1', 'swpop_4-1', 'agg_map_4-1', '4-1'],
+        ['domain_5-1', 'papop_5-1', 'swpop_5-1','agg_map_5-1', '5-1'],
+        ['domain_8-3', 'papop_8-3', 'swpop_8-3','agg_map', '9-15'],
+    ]
+
+    for slist in sources:
+        srclist = [
+            {'name':'domain', 'src':slist[0], 'return':'df'},
+            {'name':'pa', 'src':slist[1], 'return':'df'},
+            {'name':'state', 'src':slist[2], 'return':'df'},
+            {'name':'map', 'src':slist[3], 'return':'df'},
+        ]
+
+        results = get_datadef_source_info(srclist)
+        df_domain = results['domain']
+        df_pa = results['pa']
+        df_state = results['state']
+        df_map = results['map']
+        dommap = 'Domain'
+        pamap = 'PA'
+        swmap = 'State'
+        friendly = 'FullHeader'
+        agglevel = 'agglevel'  #not header, but a field
+
+        df_map_nopa = df_map[df_map[dommap] != 'PA']
+        domfields = df_map[df_map[dommap].notnull()][dommap].tolist()
+        df_domain_trunc = df_domain[domfields]
+        #aggregate domain by PA
+        df_domain_pa = df_domain_trunc.groupby(['PA']).sum().reset_index()
+        df_domain_sw = pd.DataFrame(df_domain_trunc.sum()).T
+        df_domain_sw.drop('PA', axis=1, inplace=True)
+        
+        df_pa_sw = pd.DataFrame(df_pa.sum()).T
+        df_pa_sw.drop('PA', axis=1, inplace=True)
+        #rename fields so they match the pa table
+        df_domain_pa_remapped = remapdata(df_map, dommap, pamap, df_domain_pa)
+        #rename to match statewide
+        df_domain_sw_remap = remapdata(df_map_nopa, dommap, swmap, df_domain_sw)
+        df_pa_sw_remap = remapdata(df_map_nopa, pamap, swmap, df_pa_sw)
+        
+        #Prep PA
+        df_pa = df_pa[df_domain_pa_remapped.columns]
+        df_domain_pa_remapped.set_index('PA', inplace=True)
+        df_pa.set_index('PA', inplace=True)
+        #Prep SW
+        df_sw = df_state[df_domain_sw_remap.columns]
+
+        print(f'num shape {df_domain_pa_remapped.shape}, den shape {df_pa.shape}')
+        print(f'num shape {df_domain_sw_remap.shape}, den shape {df_sw.shape}')
+        print(f'num shape {df_pa_sw_remap.shape}, den shape {df_sw.shape}')
+        if df_domain_pa_remapped.shape == df_pa.shape:
+            domainpct = 1 - (df_domain_pa_remapped / df_pa)
+        else:
+            print(f'Shapes are different for df_domain_pa_remapped/df_pa. num shape {df_domain_pa_remapped.shape}, den shape {df_pa.shape}')
+        if df_domain_sw_remap.shape == df_sw.shape:
+            dom_st_pct = 1 - (df_domain_sw_remap / df_sw)
+        else:
+            print(f'Shapes are different for df_domain_sw_remap/df_sw. num shape {df_domain_sw_remap.shape}, den shape {df_sw.shape}')
+        if df_pa_sw_remap.shape == df_sw.shape:
+            pa_st_pct = 1 - (df_pa_sw_remap / df_sw)
+        else:
+            print(f'Shapes are different for df_pa_sw_remap/df_sw. num shape {df_pa_sw_remap.shape}, den shape {df_sw.shape}')
+        
+        domainpct['Revision'] = slist[4]
+        #combine dom and pa into single df
+        dom_st_pct[agglevel] = 'domain'
+        pa_st_pct[agglevel] = 'pa'
+        st_pct = pd.concat([dom_st_pct, pa_st_pct])
+        st_pct['Revision'] = slist[4]
+
+        if 'domainpct_combined' not in locals():
+            domainpct_combined = domainpct
+        else:
+            domainpct_combined = pd.concat([domainpct_combined, domainpct])
+
+        if 'st_pct_combined' not in locals():
+            st_pct_combined = st_pct
+        else:
+            st_pct_combined = pd.concat([st_pct_combined, st_pct])
+
+    # df_domain_pa_remapped.to_csv(r'Z:\Favorites\CPUC10 (Group D - Custom EM&V)\4 Deliverables\11 - Draft and Final Evaluation Reports\CIAC 2018\Design\Test\df_domain_pa_remapped.csv')
+    # df_domain_sw_remap.to_csv(r'Z:\Favorites\CPUC10 (Group D - Custom EM&V)\4 Deliverables\11 - Draft and Final Evaluation Reports\CIAC 2018\Design\Test\df_domain_sw_remap.csv')
+    # df_pa.to_csv(r'Z:\Favorites\CPUC10 (Group D - Custom EM&V)\4 Deliverables\11 - Draft and Final Evaluation Reports\CIAC 2018\Design\Test\df_pa.csv')
+    # domaindiff.to_csv(r'Z:\Favorites\CPUC10 (Group D - Custom EM&V)\4 Deliverables\11 - Draft and Final Evaluation Reports\CIAC 2018\Design\Test\domaindiff.csv')
+    domainpct_combined.to_csv(r'Z:\Favorites\CPUC10 (Group D - Custom EM&V)\8 PII\11 - Draft and Final Evaluation Reports\CIAC2018\Data\domain_papct_revisions.csv')
+    st_pct_combined.to_csv(r'Z:\Favorites\CPUC10 (Group D - Custom EM&V)\8 PII\11 - Draft and Final Evaluation Reports\CIAC2018\Data\sw_pct_revisions.csv')
+    # domainpct = domainpct.reset_index()
+    # domainpct_friendly = remapdata(df_map, pamap, friendly, domainpct)
+
+    # dom_st_pct_friendly = remapdata(df_map_nopa, swmap, friendly, dom_st_pct)
+    # pa_st_pct_friendly = remapdata(df_map_nopa, swmap, friendly, pa_st_pct)
+    # pa_st_pct_friendly.to_csv(r'Z:\Favorites\CPUC10 (Group D - Custom EM&V)\4 Deliverables\11 - Draft and Final Evaluation Reports\CIAC 2018\Design\Test\pa_sw_pct_friendly.csv')
+
+    # st_pct_friendly = remapdata(df_map_nopa, swmap, friendly, st_pct)
+    # domainpct_friendly.to_csv(r'Z:\Favorites\CPUC10 (Group D - Custom EM&V)\4 Deliverables\11 - Draft and Final Evaluation Reports\CIAC 2018\Design\Test\domain_papct_friendly.csv', index=False)
+    # st_pct_friendly.to_csv(r'Z:\Favorites\CPUC10 (Group D - Custom EM&V)\4 Deliverables\11 - Draft and Final Evaluation Reports\CIAC 2018\Design\Test\sw_pct_friendly.csv', index=False)
+        
+    print('doh')
+
+def build_combined_summary_compare():
+    """
+    put the 5-1 version together with the current version
+    """
+    file51 = r"Z:\Favorites\CPUC10 (Group D - Custom EM&V)\8 PII\11 - Draft and Final Evaluation Reports\CIAC2018\Data\combined_summary_5-1.csv"
+    filecurrent = r"Z:\Favorites\CPUC10 (Group D - Custom EM&V)\8 PII\11 - Draft and Final Evaluation Reports\CIAC2018\Data\combined_summary.csv"
+
+    df_51 = pd.read_csv(file51)
+    df_cur = pd.read_csv(filecurrent)
+
+    df_51['period']='51'
+    df_cur['period']='cur'
+
+    df = pd.concat([df_cur, df_51])
+    outfile = r"Z:\Favorites\CPUC10 (Group D - Custom EM&V)\8 PII\11 - Draft and Final Evaluation Reports\CIAC2018\Data\combined_summary_qccompare.csv"
+    df.to_csv(outfile, index=False)
+
+    commoncols = [x for x in df_51.columns if x in df_cur.columns]
+    commoncols.remove('Unnamed: 0')
+    commoncols.remove('period')
+
+
+    df_51_com = df_51[commoncols]
+    df_cur_com = df_cur[commoncols]
+    df_51_com.set_index(['PA', 'domain'], inplace = True)
+    df_cur_com.set_index(['PA', 'domain'], inplace = True)
+    df_dif = 1 - (df_51_com / df_cur_com)
+    outfile = r"Z:\Favorites\CPUC10 (Group D - Custom EM&V)\8 PII\11 - Draft and Final Evaluation Reports\CIAC2018\Data\combined_summary_qcdifs.csv"
+    df_dif.to_csv(outfile)
+
+def build_combined_summary_compare_multiple():
+    """
+    compare the various versions of the report data
+    """
+    
+    file41 = r"Z:\Favorites\CPUC10 (Group D - Custom EM&V)\8 PII\11 - Draft and Final Evaluation Reports\CIAC2018\Data\combined_summary_4-1.xlsx"
+    file51 = r"Z:\Favorites\CPUC10 (Group D - Custom EM&V)\8 PII\11 - Draft and Final Evaluation Reports\CIAC2018\Data\combined_summary_5-1.xlsx"
+    file83 = r"Z:\Favorites\CPUC10 (Group D - Custom EM&V)\8 PII\11 - Draft and Final Evaluation Reports\CIAC2018\Data\combined_summary_8-3.csv"
+
+    df_41 = pd.read_excel(file41)
+    df_51 = pd.read_excel(file51)
+    df_83 = pd.read_csv(file83)
+
+    df_41['period']='41'
+    df_51['period']='51'
+    df_83['period']='915'
+
+    versions = [df_41, df_51, df_83]
+    df_cur = df_83
+    for i in range(0,len(versions)-1):
+    # for df_old in oldversions:
+        df_old = versions[i]
+        df_cur = versions[i+1]
+        if 'df' not in locals():
+            df = pd.concat([df_cur, df_old])
+        else:
+            df = pd.concat([df, df_cur])
+
+        commoncols = [x for x in df_old.columns if x in df_cur.columns]
+        commoncols.remove('Unnamed: 0')
+        commoncols.remove('period')
+
+        df_old_com = df_old[commoncols]
+        df_cur_com = df_cur[commoncols]
+        df_old_com.set_index(['PA', 'domain'], inplace = True)
+        df_cur_com.set_index(['PA', 'domain'], inplace = True) #does this cause a problem the second time through? need to reset?
+        df_dif_interim = 1 - (df_old_com / df_cur_com)
+        df_dif_interim['period'] = f"{df_old['period'].unique()[0]}-{df_cur['period'].unique()[0]}"
+        if 'df_dif' not in locals():
+            df_dif = df_dif_interim
+        else:
+            df_dif = pd.concat([df_dif, df_dif_interim])
+
+
+    outfile = r"Z:\Favorites\CPUC10 (Group D - Custom EM&V)\8 PII\11 - Draft and Final Evaluation Reports\CIAC2018\Data\combined_summary_qccompare_all.csv"
+    df.to_csv(outfile, index=False)
+    outfile = r"Z:\Favorites\CPUC10 (Group D - Custom EM&V)\8 PII\11 - Draft and Final Evaluation Reports\CIAC2018\Data\combined_summary_qcdifs_all.csv"
+    df_dif.to_csv(outfile)
 
 def runcode():
         
@@ -3657,6 +3947,13 @@ if __name__ == '__main__':
     # create_detail_pop(sfsession, mapsheet='map_atr')
 
     copy_deliverable_code(params.CIAC_2018_DATA_DEF_FILE, sheet='codefiles', listfilter='active=="y"')
+    # # copy_deliverable_code(r'Z:\Favorites\CPUC10 (Group D - Custom EM&V)\4 Deliverables\__ - Cross Cutting\Evaluation Tools\codeoutputdriver.xlsx', sheet='2017review', listfilter='active=="y"')
+    # # copy_deliverable_code(r'Z:\Favorites\CPUC10 (Group D - Custom EM&V)\4 Deliverables\__ - Cross Cutting\Evaluation Tools\codeoutputdriver.xlsx', sheet='2017review', listfilter='active=="y"')
 
     # compare_datasets()
     # make_charts() #temporary until real driver is built. Driven through generate tables now
+
+    # check_rollup_totals()
+    # build_combined_summary_compare()
+    # build_combined_summary_compare_multiple()
+    # check_rollup_totals_multiple()

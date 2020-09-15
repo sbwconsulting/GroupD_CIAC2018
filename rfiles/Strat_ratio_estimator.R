@@ -1,8 +1,9 @@
 library(data.table)
-strat.ratio.estimator <- function(data=dt_ciac_proj,frame='Electric',period='1stYear',conf=0.9,return_strat=FALSE,return_PA=FALSE,return_SW=FALSE){
+strat.ratio.estimator <- function(data=dt_ciac_proj,frame='Electric',period='Annualized',conf=0.9,return_strat=FALSE,return_PA=FALSE,return_SW=FALSE){
   data <- copy(data[(get(paste0('Frame_',frame)))])
   svgs_field <- 'Ann'
-  if(period!='1stYear') svgs_field <- 'LC'
+  if(period=='LifeCycle') svgs_field <- 'LC'
+  if(period=='1stYear') svgs_field <- '1stYr'
 
   t <- 1.645
   
@@ -85,16 +86,14 @@ strat.ratio.estimator <- function(data=dt_ciac_proj,frame='Electric',period='1st
                               PA_mean_eval_gr_kWh=sum(dom_pop*dom_mean_eval_gr_kWh,na.rm = T)/sum(dom_pop),
                            PA_mean_eval_gr_kW=sum(dom_pop*dom_mean_eval_gr_kW,na.rm = T)/sum(dom_pop),
                               PA_exante_gross_kWh=sum(dom_exante_gross_kWh,na.rm = T),
-                           PA_exante_gross_kW=sum(dom_exante_gross_kW,na.rm = T)),
+                           PA_exante_gross_kW=sum(dom_exante_gross_kW,na.rm = T),
+                           PA_eval_gross_svgs_kWh=sum(dom_eval_gross_svgs_kWh,na.rm=T),
+                           PA_eval_gross_svgs_kW=sum(dom_eval_gross_svgs_kW,na.rm=T)),
                         by=c('PA')]
     ## PA RRs----
-    PA_smry[,PA_eval_RR_kWh:=PA_mean_eval_gr_kWh/PA_mean_ea_gr_kWh]
-    PA_smry[,PA_eval_RR_kW:=PA_mean_eval_gr_kW/PA_mean_ea_gr_kW]
+    PA_smry[,PA_eval_RR_kWh:=PA_eval_gross_svgs_kWh/PA_exante_gross_kWh]
+    PA_smry[,PA_eval_RR_kW:=PA_eval_gross_svgs_kW/PA_exante_gross_kW]
 
-    ## calculate PA evaluated savings----
-    PA_smry[,PA_eval_gross_svgs_kWh:=PA_eval_RR_kWh*PA_exante_gross_kWh]
-    PA_smry[,PA_eval_gross_svgs_kW:=PA_eval_RR_kW*PA_exante_gross_kW]
-    
     ## SW roll up, PAs are now strata----
     SW_smry <- PA_smry[,.(SW_pop=sum(PA_pop),SW_n=sum(PA_n,na.rm=T),SW_cmplt=sum(PA_cmplt,na.rm=T),
                            SW_mean_ea_gr_kWh=sum(PA_pop*PA_mean_ea_gr_kWh,na.rm=T)/sum(PA_pop),
@@ -102,14 +101,13 @@ strat.ratio.estimator <- function(data=dt_ciac_proj,frame='Electric',period='1st
                            SW_mean_eval_gr_kWh=sum(PA_pop*PA_mean_eval_gr_kWh,na.rm = T)/sum(PA_pop),
                            SW_mean_eval_gr_kW=sum(PA_pop*PA_mean_eval_gr_kW,na.rm = T)/sum(PA_pop),
                            SW_exante_gross_kWh=sum(PA_exante_gross_kWh,na.rm = T),
-                           SW_exante_gross_kW=sum(PA_exante_gross_kW,na.rm = T))]
+                           SW_exante_gross_kW=sum(PA_exante_gross_kW,na.rm = T),
+                          SW_eval_gross_svgs_kWh=sum(PA_eval_gross_svgs_kWh,na.rm = T),
+                          SW_eval_gross_svgs_kW=sum(PA_eval_gross_svgs_kW,na.rm = T))]
     ## SW RRs----
-    SW_smry[,SW_eval_RR_kWh:=SW_mean_eval_gr_kWh/SW_mean_ea_gr_kWh]
-    SW_smry[,SW_eval_RR_kW:=SW_mean_eval_gr_kW/SW_mean_ea_gr_kW]
+    SW_smry[,SW_eval_RR_kWh:=SW_eval_gross_svgs_kWh/SW_exante_gross_kWh]
+    SW_smry[,SW_eval_RR_kW:=SW_eval_gross_svgs_kW/SW_exante_gross_kW]
     
-    ## calculate PA evaluated savings----
-    SW_smry[,SW_eval_gross_svgs_kWh:=SW_eval_RR_kWh*SW_exante_gross_kWh]
-    SW_smry[,SW_eval_gross_svgs_kW:=SW_eval_RR_kW*SW_exante_gross_kW]
     # SW_smry[,c('SW_pop','SW_n','SW_cmplt','SW_eval_RR_kWh','rp_SW_eval_RR_kWh')]
     
   },{ ## else if frame=='Gas'----
@@ -172,20 +170,18 @@ strat.ratio.estimator <- function(data=dt_ciac_proj,frame='Electric',period='1st
     PA_smry <- dom_smry[,.(PA_pop=sum(dom_pop),PA_n=sum(dom_n,na.rm=T),PA_cmplt=sum(dom_cmplt,na.rm=T),
                            PA_mean_ea_gr_thm=sum(dom_pop*dom_mean_ea_gr_thm,na.rm=T)/sum(dom_pop),
                            PA_mean_eval_gr_thm=sum(dom_pop*dom_mean_eval_gr_thm,na.rm = T)/sum(dom_pop),
-                           PA_exante_gross_thm=sum(dom_exante_gross_thm,na.rm = T)),
+                           PA_exante_gross_thm=sum(dom_exante_gross_thm,na.rm = T),
+                           PA_eval_gross_svgs_thm=sum(dom_eval_gross_svgs_thm,na.rm = T)),
                         by=c('PA')]
-    PA_smry[,PA_eval_RR_thm:=PA_mean_eval_gr_thm/PA_mean_ea_gr_thm]
-
-
-    ## calculate PA evaluated savings
-    PA_smry[,PA_eval_gross_svgs_thm:=PA_eval_RR_thm*PA_exante_gross_thm]
+    PA_smry[,PA_eval_RR_thm:=PA_eval_gross_svgs_thm/PA_exante_gross_thm]
 
     ## SW roll up, PAs are now strata----
     SW_smry <- PA_smry[,.(SW_pop=sum(PA_pop),SW_n=sum(PA_n,na.rm=T),SW_cmplt=sum(PA_cmplt,na.rm=T),
                           SW_mean_ea_gr_thm=sum(PA_pop*PA_mean_ea_gr_thm,na.rm=T)/sum(PA_pop),
                           SW_mean_eval_gr_thm=sum(PA_pop*PA_mean_eval_gr_thm,na.rm = T)/sum(PA_pop),
-                          SW_exante_gross_thm=sum(PA_exante_gross_thm,na.rm = T))]
-    SW_smry[,SW_eval_RR_thm:=SW_mean_eval_gr_thm/SW_mean_ea_gr_thm]
+                          SW_exante_gross_thm=sum(PA_exante_gross_thm,na.rm = T),
+                          SW_eval_gross_svgs_thm=sum(PA_eval_gross_svgs_thm,na.rm = T))]
+    SW_smry[,SW_eval_RR_thm:=SW_eval_gross_svgs_thm/SW_exante_gross_thm]
 
     ## calculate PA evaluated savings
     SW_smry[,SW_eval_gross_svgs_thm:=SW_eval_RR_thm*SW_exante_gross_thm]
@@ -193,7 +189,7 @@ strat.ratio.estimator <- function(data=dt_ciac_proj,frame='Electric',period='1st
   })
   strat_smry <- dom_smry[strat_smry,on=colnames(strat_smry)[colnames(strat_smry) %in% colnames(dom_smry)]]
   drop_cols <- colnames(dom_smry)[grep('var_|eb_|se_',colnames(dom_smry))]
-  if(period!='1stYear') drop_cols <- c(drop_cols,colnames(dom_smry)[grep('EUL',colnames(dom_smry))])
+  if(period!='Annualized') drop_cols <- c(drop_cols,colnames(dom_smry)[grep('EUL',colnames(dom_smry))])
   dom_smry[,(drop_cols):=NULL]
   drop_cols_PA <- colnames(PA_smry)[grep('var_|eb_|mean|_r_|wtd|z2|se_',colnames(PA_smry))]
   PA_smry[,(drop_cols_PA):=NULL]

@@ -1,13 +1,28 @@
 library(data.table)
 
-strat.mean.estimator <- function(data=dt_ciac_proj,frame='Electric',period='1stYear',conf=0.9,return_strat=FALSE,return_PA=FALSE,return_SW=FALSE){
+# data=dt_ciac_proj
+# frame='Gas'
+# period='Annualized'
+# conf=0.9
+# return_strat=FALSE
+# return_PA=FALSE
+# return_SW=FALSE
+strat.mean.estimator <- function(data=dt_ciac_proj,frame='Electric',period='Annualized',conf=0.9,return_strat=FALSE,return_PA=FALSE,return_SW=FALSE){
   data <- copy(data[(get(paste0('Frame_',frame)))])
   svgs_field <- 'Ann'
   gross_field <- 'AG'
-
-  if(period!='1stYear') {
+  ep_ntgr_kW_field <- 'ep_NTGR_kW'
+  ep_ntgr_thm_field <- 'ep_NTGR_thm'
+  
+  if(period=='LifeCycle') {
     svgs_field <- 'LC'
     gross_field <- 'LG'
+  }
+  if(period=='FirstYear') {
+    svgs_field <- '1stYr'
+    gross_field <- '1G'
+    ep_ntgr_kW_field <- 'ep_1stYr_NTGR_kW'
+    ep_ntgr_thm_field <- 'ep_1stYr_NTGR_thm'
   }
   t <- 1.645
 
@@ -21,7 +36,7 @@ strat.mean.estimator <- function(data=dt_ciac_proj,frame='Electric',period='1stY
     data[,(ep_gr_kW_field):=get(ea_gr_kW_field)*get(dom_eval_RR_kW_field)]
     
     ## get kWh stratum level summary----
-    strat_smry <- data[!is.na(ep_NTGR_kWh),.(n_cmplt_net=length(SBW_ProjID),
+    strat_smry <- data[!is.na(get(paste0(ep_ntgr_kW_field,'h'))),.(n_cmplt_net=length(SBW_ProjID),
                       str_eval_gross_kWh=sum(get(paste0(ep_gr_kW_field,'h')),na.rm=T),
                       str_eval_gross_kW=sum(get(ep_gr_kW_field),na.rm=T)),
                   by=c('PA','domain','stratum_kWh')][
@@ -36,18 +51,18 @@ strat.mean.estimator <- function(data=dt_ciac_proj,frame='Electric',period='1stY
     strat_smry[is.na(n_net),n_net:=0]
     strat_smry[is.na(n_cmplt_net),n_cmplt_net:=0]
     data <- strat_smry[data,on=c('PA','domain','stratum_kWh')]
-    data[!is.na(ep_NTGR_kWh),wi_kWh:=get(paste0(ep_gr_kW_field,'h'))/str_eval_gross_kWh]
-    data[!is.na(ep_NTGR_kW),wi_kW:=get(ep_gr_kW_field)/str_eval_gross_kW]
-    data[!is.na(ep_NTGR_kWh),ea_wi_NTGR_kWh:=wi_kWh*ea_NTGR_kWh]
-    data[!is.na(ep_NTGR_kW),ea_wi_NTGR_kW:=wi_kW*ea_NTGR_kW]
-    data[!is.na(ep_NTGR_kWh),wi_NTGR_kWh:=wi_kWh*ep_NTGR_kWh]
-    data[!is.na(ep_NTGR_kW),wi_NTGR_kW:=wi_kW*ep_NTGR_kW]
-    data[!is.na(ep_NTGR_kWh),str_mean_exante_NTGR_kWh:=lapply(.SD,sum,na.rm=T),.SDcols='ea_wi_NTGR_kWh',by=c('domain','stratum_kWh')]
-    data[!is.na(ep_NTGR_kW),str_mean_exante_NTGR_kW:=lapply(.SD,sum,na.rm=T),.SDcols='ea_wi_NTGR_kW',by=c('domain','stratum_kWh')]
-    data[!is.na(ep_NTGR_kWh),str_mean_eval_NTGR_kWh:=lapply(.SD,sum,na.rm=T),.SDcols='wi_NTGR_kWh',by=c('domain','stratum_kWh')]
-    data[!is.na(ep_NTGR_kW),str_mean_eval_NTGR_kW:=lapply(.SD,sum,na.rm=T),.SDcols='wi_NTGR_kW',by=c('domain','stratum_kWh')]
-    data[!is.na(ep_NTGR_kWh),Si_kWh:=wi_kWh*(ep_NTGR_kWh-str_mean_eval_NTGR_kWh)^2/n_cmplt_net]
-    data[!is.na(ep_NTGR_kW),Si_kW:=wi_kW*(ep_NTGR_kW-str_mean_eval_NTGR_kW)^2/n_cmplt_net]
+    data[!is.na(get(paste0(ep_ntgr_kW_field,'h'))),wi_kWh:=get(paste0(ep_gr_kW_field,'h'))/str_eval_gross_kWh]
+    data[!is.na(get(ep_ntgr_kW_field)),wi_kW:=get(ep_gr_kW_field)/str_eval_gross_kW]
+    data[!is.na(get(paste0(ep_ntgr_kW_field,'h'))),ea_wi_NTGR_kWh:=wi_kWh*ea_NTGR_kWh]
+    data[!is.na(get(ep_ntgr_kW_field)),ea_wi_NTGR_kW:=wi_kW*ea_NTGR_kW]
+    data[!is.na(get(paste0(ep_ntgr_kW_field,'h'))),wi_NTGR_kWh:=wi_kWh*get(paste0(ep_ntgr_kW_field,'h'))]
+    data[!is.na(get(ep_ntgr_kW_field)),wi_NTGR_kW:=wi_kW*get(ep_ntgr_kW_field)]
+    data[!is.na(get(paste0(ep_ntgr_kW_field,'h'))),str_mean_exante_NTGR_kWh:=lapply(.SD,sum,na.rm=T),.SDcols='ea_wi_NTGR_kWh',by=c('domain','stratum_kWh')]
+    data[!is.na(get(ep_ntgr_kW_field)),str_mean_exante_NTGR_kW:=lapply(.SD,sum,na.rm=T),.SDcols='ea_wi_NTGR_kW',by=c('domain','stratum_kWh')]
+    data[!is.na(get(paste0(ep_ntgr_kW_field,'h'))),str_mean_eval_NTGR_kWh:=lapply(.SD,sum,na.rm=T),.SDcols='wi_NTGR_kWh',by=c('domain','stratum_kWh')]
+    data[!is.na(get(ep_ntgr_kW_field)),str_mean_eval_NTGR_kW:=lapply(.SD,sum,na.rm=T),.SDcols='wi_NTGR_kW',by=c('domain','stratum_kWh')]
+    data[!is.na(get(paste0(ep_ntgr_kW_field,'h'))),Si_kWh:=wi_kWh*(get(paste0(ep_ntgr_kW_field,'h'))-str_mean_eval_NTGR_kWh)^2/n_cmplt_net]
+    data[!is.na(get(ep_ntgr_kW_field)),Si_kW:=wi_kW*(get(ep_ntgr_kW_field)-str_mean_eval_NTGR_kW)^2/n_cmplt_net]
     strat_smry <- data[stratum_kWh!=8,.(Sh2_kWh=sum(Si_kWh,na.rm=T),Sh2_kW=sum(Si_kW,na.rm=T),str_mean_exante_NTGR_kWh=mean(str_mean_exante_NTGR_kWh,na.rm=T),str_mean_exante_NTGR_kW=mean(str_mean_exante_NTGR_kW,na.rm=T),
                                      str_mean_eval_NTGR_kWh=mean(str_mean_eval_NTGR_kWh,na.rm=T),str_mean_eval_NTGR_kW=mean(str_mean_eval_NTGR_kW,na.rm=T)),
                                   by=c('PA','domain','stratum_kWh')][strat_smry,on=c('PA','domain','stratum_kWh')]
@@ -96,13 +111,17 @@ strat.mean.estimator <- function(data=dt_ciac_proj,frame='Electric',period='1stY
     PA_smry <- dom_smry[,.(PA_pop_net=sum(dom_pop_net),PA_n_net=sum(dom_n_net),PA_cmplt_net=sum(dom_cmplt_net),
                            PA_mean_exante_NTGR_kWh=sum(dom_pop_net*dom_mean_exante_NTGR_kWh,na.rm = T)/sum(dom_pop_net),
                            PA_mean_exante_NTGR_kW=sum(dom_pop_net*dom_mean_exante_NTGR_kW,na.rm = T)/sum(dom_pop_net),
-                           PA_mean_eval_NTGR_kWh=sum(dom_pop_net*dom_mean_eval_NTGR_kWh,na.rm = T)/sum(dom_pop_net),
-                              PA_mean_eval_NTGR_kW=sum(dom_pop_net*dom_mean_eval_NTGR_kW,na.rm = T)/sum(dom_pop_net),
+                           # PA_mean_eval_NTGR_kWh=sum(dom_pop_net*dom_mean_eval_NTGR_kWh,na.rm = T)/sum(dom_pop_net),
+                           #    PA_mean_eval_NTGR_kW=sum(dom_pop_net*dom_mean_eval_NTGR_kW,na.rm = T)/sum(dom_pop_net),
                               # PA_smpld_ep_gr_svgs_kWh=sum(dom_smpld_ep_gr_svgs_kWh,na.rm=T),
                               # PA_smpld_ep_gr_svgs_kW=sum(dom_smpld_ep_gr_svgs_kW,na.rm=T),
                               PA_tot_ep_gr_svgs_kWh=sum(dom_tot_ep_gr_svgs_kWh,na.rm=T),
-                              PA_tot_ep_gr_svgs_kW=sum(dom_tot_ep_gr_svgs_kW,na.rm=T)),
+                              PA_tot_ep_gr_svgs_kW=sum(dom_tot_ep_gr_svgs_kW,na.rm=T),
+                           PA_eval_svgs_kWh=sum(dom_eval_svgs_kWh,na.rm = T),
+                           PA_eval_svgs_kW=sum(dom_eval_svgs_kW,na.rm = T)),
                            by=c('PA')]
+    PA_smry[,PA_eval_NTGR_kWh:=PA_eval_svgs_kWh/PA_tot_ep_gr_svgs_kWh]
+    PA_smry[,PA_eval_NTGR_kW:=PA_eval_svgs_kW/PA_tot_ep_gr_svgs_kW]
     
     dom_smry <- PA_smry[dom_smry,on=colnames(dom_smry)[colnames(dom_smry) %in% colnames(PA_smry)]]
     dom_smry[,dom_Wh:=dom_pop_net/PA_pop_net]
@@ -116,23 +135,27 @@ strat.mean.estimator <- function(data=dt_ciac_proj,frame='Electric',period='1stY
     ## zero out stats for certainty domains with pop=1
     dom_smry[dom_pop_net==1 & dom_cmplt_net>0,colnames(dom_smry)[grepl('Sh',colnames(dom_smry))]:=0]
 
-    PA_smry[,PA_eval_svgs_kWh:=PA_tot_ep_gr_svgs_kWh*PA_mean_eval_NTGR_kWh]
-    
-    PA_smry[,PA_eval_svgs_kW:=PA_tot_ep_gr_svgs_kW*PA_mean_eval_NTGR_kW]
+    # PA_smry[,PA_eval_svgs_kWh:=PA_tot_ep_gr_svgs_kWh*PA_mean_eval_NTGR_kWh]
+    # PA_smry[,PA_eval_svgs_kW:=PA_tot_ep_gr_svgs_kW*PA_mean_eval_NTGR_kW]
     
     ## SW roll up, now PAs are strata
     SW_smry <- PA_smry[,.(SW_n_net=sum(PA_n_net),SW_cmplt_net=sum(PA_cmplt_net),
                           SW_mean_exante_NTGR_kWh=sum(PA_pop_net*PA_mean_exante_NTGR_kWh,na.rm = T)/sum(PA_pop_net),
                           SW_mean_exante_NTGR_kW=sum(PA_pop_net*PA_mean_exante_NTGR_kW,na.rm = T)/sum(PA_pop_net),
-                          SW_mean_eval_NTGR_kWh=sum(PA_pop_net*PA_mean_eval_NTGR_kWh,na.rm = T)/sum(PA_pop_net),
-                           SW_mean_eval_NTGR_kW=sum(PA_pop_net*PA_mean_eval_NTGR_kW,na.rm = T)/sum(PA_pop_net),
+                          # SW_mean_eval_NTGR_kWh=sum(PA_pop_net*PA_mean_eval_NTGR_kWh,na.rm = T)/sum(PA_pop_net),
+                          #  SW_mean_eval_NTGR_kW=sum(PA_pop_net*PA_mean_eval_NTGR_kW,na.rm = T)/sum(PA_pop_net),
                            # SW_smpld_ep_gr_svgs_kWh=sum(PA_smpld_ep_gr_svgs_kWh,na.rm=T),
                            # SW_smpld_ep_gr_svgs_kW=sum(PA_smpld_ep_gr_svgs_kW,na.rm=T),
                            SW_tot_ep_gr_svgs_kWh=sum(PA_tot_ep_gr_svgs_kWh,na.rm=T),
-                           SW_tot_ep_gr_svgs_kW=sum(PA_tot_ep_gr_svgs_kW,na.rm=T))]
-    SW_smry[,SW_eval_svgs_kWh:=SW_tot_ep_gr_svgs_kWh*SW_mean_eval_NTGR_kWh]
+                           SW_tot_ep_gr_svgs_kW=sum(PA_tot_ep_gr_svgs_kW,na.rm=T),
+                          SW_eval_svgs_kWh=sum(PA_eval_svgs_kWh,na.rm=T),
+                          SW_eval_svgs_kW=sum(PA_eval_svgs_kW,na.rm=T))]
     
-    SW_smry[,SW_eval_svgs_kW:=SW_tot_ep_gr_svgs_kW*SW_mean_eval_NTGR_kW]
+    SW_smry[,SW_eval_NTGR_kWh:=SW_eval_svgs_kWh/SW_tot_ep_gr_svgs_kWh]
+    SW_smry[,SW_eval_NTGR_kW:=SW_eval_svgs_kW/SW_tot_ep_gr_svgs_kW]
+    
+    # SW_smry[,SW_eval_svgs_kWh:=SW_tot_ep_gr_svgs_kWh*SW_mean_eval_NTGR_kWh]
+    # SW_smry[,SW_eval_svgs_kW:=SW_tot_ep_gr_svgs_kW*SW_mean_eval_NTGR_kW]
     
   },{  ## else Gas frame----
     ea_gr_thm_field <- paste0('ea_',svgs_field,'Gross_thm')
@@ -142,25 +165,26 @@ strat.mean.estimator <- function(data=dt_ciac_proj,frame='Electric',period='1stY
     data[,(ep_gr_thm_field):=get(ea_gr_thm_field)*get(dom_eval_RR_thm_field)]
     
     ## get thmh stratum level summary----
-    strat_smry <- data[!is.na(ep_NTGR_thm),.(n_cmplt_net=length(SBW_ProjID),str_eval_gross_thm=sum(get(ep_gr_thm_field),na.rm=T)),
+    strat_smry <- data[!is.na(get(ep_ntgr_thm_field)),.(n_cmplt_net=length(SBW_ProjID),str_eval_gross_thm=sum(get(ep_gr_thm_field),na.rm=T)),
                        by=c('PA','domain','stratum_thm')][
                          data[(sampled_thm=='Y'|smpld_net_thm=='Y'),.(n_net=length(SBW_ProjID)),
                               by=c('PA','domain','stratum_thm')][
                                 # data[,.(pop_net=length(SBW_ProjID)),by=c('PA','domain','stratum_thm')],
                                 data[stratum_thm!=8,.(pop_net=length(SBW_ProjID)),by=c('PA','domain','stratum_thm')],
                                 on=c('PA','domain','stratum_thm')],on=c('PA','domain','stratum_thm')]
-    strat_smry <- strat_smry[data[,.(str_tot_eval_gross_thm=sum(get(ep_gr_thm_field),na.rm=T),pop_net_tot=length(SBW_ProjID)),
+    strat_smry <- strat_smry[data[,.(str_tot_eval_gross_thm=sum(get(ep_gr_thm_field),na.rm=T),pop_net_tot=length(SBW_ProjID),
+                                     str_tot_exante_LCNet_thm=sum(ea_LCNet_thm,na.rm=T),str_tot_exante_LCGross_thm=sum(ea_LCGross_thm,na.rm=T)),
                                   by=c('PA','domain','stratum_thm')],on=c('PA','domain','stratum_thm')][order(PA,domain,stratum_thm)]
     strat_smry[is.na(n_net) & stratum_thm==9,n_net:=pop_net]
     strat_smry[is.na(n_net),n_net:=0]
     strat_smry[is.na(n_cmplt_net),n_cmplt_net:=0]
     data <- strat_smry[data,on=c('PA','domain','stratum_thm')]
-    data[!is.na(ep_NTGR_thm),wi_thm:=get(ep_gr_thm_field)/str_eval_gross_thm]
-    data[!is.na(ep_NTGR_thm),ea_wi_NTGR_thm:=wi_thm*ea_NTGR_thm]
-    data[!is.na(ep_NTGR_thm),str_mean_exante_NTGR_thm:=lapply(.SD,sum,na.rm=T),.SDcols='ea_wi_NTGR_thm',by=c('domain','stratum_thm')]
-    data[!is.na(ep_NTGR_thm),wi_NTGR_thm:=wi_thm*ep_NTGR_thm]
-    data[!is.na(ep_NTGR_thm),str_mean_eval_NTGR_thm:=lapply(.SD,sum,na.rm=T),.SDcols='wi_NTGR_thm',by=c('domain','stratum_thm')]
-    data[!is.na(ep_NTGR_thm),Si_thm:=wi_thm*(ep_NTGR_thm-str_mean_eval_NTGR_thm)^2/n_cmplt_net]
+    data[!is.na(get(ep_ntgr_thm_field)),wi_thm:=get(ep_gr_thm_field)/str_eval_gross_thm]
+    data[!is.na(get(ep_ntgr_thm_field)),ea_wi_NTGR_thm:=wi_thm*ea_NTGR_thm]
+    data[!is.na(get(ep_ntgr_thm_field)),str_mean_exante_NTGR_thm:=lapply(.SD,sum,na.rm=T),.SDcols='ea_wi_NTGR_thm',by=c('domain','stratum_thm')]
+    data[!is.na(get(ep_ntgr_thm_field)),wi_NTGR_thm:=wi_thm*get(ep_ntgr_thm_field)]
+    data[!is.na(get(ep_ntgr_thm_field)),str_mean_eval_NTGR_thm:=lapply(.SD,sum,na.rm=T),.SDcols='wi_NTGR_thm',by=c('domain','stratum_thm')]
+    data[!is.na(get(ep_ntgr_thm_field)),Si_thm:=wi_thm*(get(ep_ntgr_thm_field)-str_mean_eval_NTGR_thm)^2/n_cmplt_net]
     strat_smry <- data[stratum_thm!=8,.(Sh2_thm=sum(Si_thm,na.rm=T),str_mean_exante_NTGR_thm=mean(str_mean_exante_NTGR_thm,na.rm=T),
                                         str_mean_eval_NTGR_thm=mean(str_mean_eval_NTGR_thm,na.rm=T)),
                                   by=c('PA','domain','stratum_thm')][strat_smry,on=c('PA','domain','stratum_thm')]
@@ -168,11 +192,16 @@ strat.mean.estimator <- function(data=dt_ciac_proj,frame='Electric',period='1stY
     
     dom_smry <- strat_smry[,.(dom_pop_net=sum(pop_net,na.rm=T),dom_n_net=sum(n_net,na.rm=T),dom_cmplt_net=sum(n_cmplt_net,na.rm=T),
                               dom_mean_exante_NTGR_thm=sum(pop_net*str_mean_exante_NTGR_thm,na.rm = T)/sum(pop_net,na.rm=T),
+                              dom_alt_exante_NTGR_thm=sum(str_tot_exante_LCNet_thm,na.rm=T)/sum(str_tot_exante_LCGross_thm,na.rm=T),
                               # dom_mean_eval_NTGR_thm=sum(pop_net*str_mean_eval_NTGR_thm,na.rm = T)/sum(pop_net),
                               dom_mean_eval_NTGR_thm=sum(pop_net*str_mean_eval_NTGR_thm,na.rm = T)/sum(pop_net,na.rm=T),
                               dom_smpld_ep_gr_svgs_thm=sum(str_eval_gross_thm,na.rm=T),
                               dom_tot_ep_gr_svgs_thm=sum(str_tot_eval_gross_thm,na.rm=T)),
                            by=c('PA','domain')]
+    
+    ## for domains with no net survey completions, assign ex ante NTGR = [total ex ante lifecycle net savings]/[total ex ante lifecycle gross savings]
+    dom_smry[dom_cmplt_net==0,dom_mean_exante_NTGR_thm:=dom_alt_exante_NTGR_thm]
+    # dom_smry[,dom_alt_exante_NTGR_thm:=NULL]
     
     strat_smry <- dom_smry[strat_smry,on=colnames(strat_smry)[colnames(strat_smry) %in% colnames(dom_smry)]]
     strat_smry[,Wh:=pop_net/dom_pop_net]
@@ -195,24 +224,33 @@ strat.mean.estimator <- function(data=dt_ciac_proj,frame='Electric',period='1stY
     PA_smry <- dom_smry[,.(PA_pop_net=sum(dom_pop_net),PA_n_net=sum(dom_n_net),PA_cmplt_net=sum(dom_cmplt_net),
                            PA_mean_eval_NTGR_thm=sum(dom_pop_net*dom_mean_eval_NTGR_thm,na.rm = T)/sum(dom_pop_net),
                            # PA_smpld_ep_gr_svgs_thm=sum(dom_smpld_ep_gr_svgs_thm,na.rm=T),
-                           PA_tot_ep_gr_svgs_thm=sum(dom_tot_ep_gr_svgs_thm,na.rm=T)),
+                           PA_tot_ep_gr_svgs_thm=sum(dom_tot_ep_gr_svgs_thm,na.rm=T),
+                           PA_eval_svgs_thm=sum(dom_eval_svgs_thm,na.rm=T)),
                         by=c('PA')]
+    # PA_smry[,PA_eval_NTGR_thm:=PA_eval_svgs_thm/PA_tot_ep_gr_svgs_thm]
     
     dom_smry <- PA_smry[dom_smry,on=colnames(dom_smry)[colnames(dom_smry) %in% colnames(PA_smry)]]
     
-    ## if there are domains with 0 net savings and NTGRs and gross savings>0 (because no net survey sompleted), set domain NTGR to PA NTGR, calc net savings
+    ## if there are domains with 0 net savings and NTGRs and gross savings>0 (because no net survey completed), set domain NTGR to PA NTGR, calc net savings
     dom_smry$dom_zero_net_saver_flag <- F
     dom_smry[dom_mean_eval_NTGR_thm==0 & dom_tot_ep_gr_svgs_thm!=0,dom_zero_net_saver_flag:=T]
-    dom_smry[dom_mean_eval_NTGR_thm==0 & dom_tot_ep_gr_svgs_thm!=0,dom_mean_eval_NTGR_thm:=PA_mean_eval_NTGR_thm]
+    dom_smry[(dom_zero_net_saver_flag),dom_mean_eval_NTGR_thm:=PA_mean_eval_NTGR_thm]
+    dom_smry[(dom_zero_net_saver_flag),dom_eval_svgs_thm:=dom_tot_ep_gr_svgs_thm*dom_mean_eval_NTGR_thm]
+    # dom_smry[dom_mean_eval_NTGR_thm==0 & dom_tot_ep_gr_svgs_thm!=0,dom_mean_eval_NTGR_thm:=PA_eval_NTGR_thm]
     ## then recalc PA NTGR
     PA_smry <- dom_smry[,.(PA_pop_net=sum(dom_pop_net),PA_n_net=sum(dom_n_net),PA_cmplt_net=sum(dom_cmplt_net),
                            PA_mean_exante_NTGR_thm=sum(dom_pop_net*dom_mean_exante_NTGR_thm,na.rm = T)/sum(dom_pop_net),
                            PA_mean_eval_NTGR_thm=sum(dom_pop_net*dom_mean_eval_NTGR_thm,na.rm = T)/sum(dom_pop_net),
                            # PA_smpld_ep_gr_svgs_thm=sum(dom_smpld_ep_gr_svgs_thm,na.rm=T),
-                           PA_tot_ep_gr_svgs_thm=sum(dom_tot_ep_gr_svgs_thm,na.rm=T)),
+                           PA_tot_ep_gr_svgs_thm=sum(dom_tot_ep_gr_svgs_thm,na.rm=T),
+                           PA_eval_svgs_thm=sum(dom_eval_svgs_thm,na.rm=T)),
                         by=c('PA')]
+    PA_smry[,PA_eval_NTGR_thm:=PA_eval_svgs_thm/PA_tot_ep_gr_svgs_thm]
+
     dom_smry <- PA_smry[,c('PA','PA_mean_eval_NTGR_thm')][dom_smry[,setdiff(colnames(dom_smry),'PA_mean_eval_NTGR_thm'),with=F],on='PA']
+    # dom_smry <- PA_smry[,c('PA','PA_eval_NTGR_thm')][dom_smry[,setdiff(colnames(dom_smry),'PA_eval_NTGR_thm'),with=F],on='PA']
     dom_smry[(dom_zero_net_saver_flag),dom_mean_eval_NTGR_thm:=PA_mean_eval_NTGR_thm]
+    # dom_smry[(dom_zero_net_saver_flag),dom_mean_eval_NTGR_thm:=PA_eval_NTGR_thm]
     dom_smry[(dom_zero_net_saver_flag),dom_eval_svgs_thm:=dom_tot_ep_gr_svgs_thm*dom_mean_eval_NTGR_thm]
     dom_smry$dom_zero_net_saver_flag <- NULL
     dom_smry[,dom_Wh:=dom_pop_net/PA_pop_net]
@@ -223,15 +261,27 @@ strat.mean.estimator <- function(data=dt_ciac_proj,frame='Electric',period='1stY
     ## zero out stats for certainty domains with pop=1
     dom_smry[dom_pop_net==1 & dom_cmplt_net>0,colnames(dom_smry)[grepl('Sh',colnames(dom_smry))]:=0]
     
-    PA_smry[,PA_eval_svgs_thm:=PA_tot_ep_gr_svgs_thm*PA_mean_eval_NTGR_thm]
+    ## then recalc PA NTGR
+    PA_smry <- dom_smry[,.(PA_pop_net=sum(dom_pop_net),PA_n_net=sum(dom_n_net),PA_cmplt_net=sum(dom_cmplt_net),
+                           PA_mean_exante_NTGR_thm=sum(dom_pop_net*dom_mean_exante_NTGR_thm,na.rm = T)/sum(dom_pop_net),
+                           # PA_mean_eval_NTGR_thm=sum(dom_pop_net*dom_mean_eval_NTGR_thm,na.rm = T)/sum(dom_pop_net),
+                           # PA_smpld_ep_gr_svgs_thm=sum(dom_smpld_ep_gr_svgs_thm,na.rm=T),
+                           PA_tot_ep_gr_svgs_thm=sum(dom_tot_ep_gr_svgs_thm,na.rm=T),
+                           PA_eval_svgs_thm=sum(dom_eval_svgs_thm,na.rm=T)),
+                        by=c('PA')]
+    PA_smry[,PA_eval_NTGR_thm:=PA_eval_svgs_thm/PA_tot_ep_gr_svgs_thm]
+    
+    # PA_smry[,PA_eval_svgs_thm:=PA_tot_ep_gr_svgs_thm*PA_mean_eval_NTGR_thm]
     
     ## SW roll up, now PAs are strata
     SW_smry <- PA_smry[,.(SW_n_net=sum(PA_n_net),SW_cmplt_net=sum(PA_cmplt_net),
                           SW_mean_exante_NTGR_thm=sum(PA_pop_net*PA_mean_exante_NTGR_thm,na.rm = T)/sum(PA_pop_net),
-                          SW_mean_eval_NTGR_thm=sum(PA_pop_net*PA_mean_eval_NTGR_thm,na.rm = T)/sum(PA_pop_net),
+                          # SW_mean_eval_NTGR_thm=sum(PA_pop_net*PA_mean_eval_NTGR_thm,na.rm = T)/sum(PA_pop_net),
                           # SW_smpld_ep_gr_svgs_thm=sum(PA_smpld_ep_gr_svgs_thm,na.rm=T),
-                          SW_tot_ep_gr_svgs_thm=sum(PA_tot_ep_gr_svgs_thm,na.rm=T))]
-    SW_smry[,SW_eval_svgs_thm:=SW_tot_ep_gr_svgs_thm*SW_mean_eval_NTGR_thm]
+                          SW_tot_ep_gr_svgs_thm=sum(PA_tot_ep_gr_svgs_thm,na.rm=T),
+                          SW_eval_svgs_thm=sum(PA_eval_svgs_thm,na.rm=T))]
+    # SW_smry[,SW_eval_svgs_thm:=SW_tot_ep_gr_svgs_thm*SW_mean_eval_NTGR_thm]
+    SW_smry[,SW_eval_NTGR_thm:=SW_eval_svgs_thm/SW_tot_ep_gr_svgs_thm]
     
   })
   strat_smry <- dom_smry[strat_smry,on=colnames(strat_smry)[colnames(strat_smry) %in% colnames(dom_smry)]]

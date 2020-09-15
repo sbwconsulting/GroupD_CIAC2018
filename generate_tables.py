@@ -5,6 +5,7 @@ import os.path
 from io import BytesIO
 from io import StringIO
 from datetime import datetime  #to get current time
+import platform
 
 from openpyxl import load_workbook
 from openpyxl.styles import Font, PatternFill, Border, Alignment
@@ -21,6 +22,7 @@ from read_table_spec import gettablespecs
 from cpuc.utility import formatws
 from cpuc.utility import excel_to_df
 from cpuc.wincom import openWord
+from cpuc.googleaccess import download_drive_file
 #hopefully this is temporary
 import create_ciac_2018_report_data_files as CIAC2018
 
@@ -1456,21 +1458,40 @@ def transferdatadefs(sfsession, filename, sheetname, wb, ):
                 ws_dest.cell(row = i + r_offset, column = j + c_offset).alignment = copy(c.alignment)
                 ws_dest.cell(row = i + r_offset, column = j + c_offset).border = copy(c.border)
 
+def run_google_download_driver(driverpath):
+    """
+    open the driver file and download specified files
+    """
+
+    #open driver
+    df = excel_to_df(driverpath)
+    df = df[df['active']=='y']
+
+    for _, row in df.iterrows():
+        download_drive_file(row['fileid'], row['dest'], row['exporttype'])
+
+
 def run_generate_tables(driverpath):
     """
     generate the tables based on the parametes specified in the passed file
     """
-
-    #open file
-    
-    # filepath = r"Z:\Favorites\CPUC10 (Group D - Custom EM&V)\4 Deliverables\__ - Cross Cutting\Evaluation Tools\Site-Specific Tools\Treatment Templates\prefill_driver.xlsx"    
-    # driverpath
-    df = excel_to_df(driverpath)
-    df = df[df['active']=='y']
-
     sfsession = ShareFileSession(SHAREFILE_OPTIONS)
+    logfile = StringIO()
+    create_logfile(logfile, level=logging.NOTSET)
+    #set below to warning, because can't get it to log otherwise. despite setting levels everywhere
+    sys = platform.uname()
+    logging.warning(f'Running on {sys.processor}, node {sys.node}, version:{sys.version} : {str(datetime.now())}')
+    logging.warning('INFO - Beginning session from main')
+    logroot = 'generatetables_'
+    logextension = datetime.now().strftime('%m-%d-%Y_%H-%M')
+    sfsession.upload_file(params.LOG_PATH_ID, logroot + logextension + '.log', logfile)
+
+    #open driver file
+    df = excel_to_df(driverpath)
+    df = df[df['active'].str.lower()=='y']
 
     for _, row in df.iterrows():
+        #get busy        
         filename = row['sourcefile']
         statusfilter = row['statusfilter']
         generateword = row['word']
@@ -1479,15 +1500,11 @@ def run_generate_tables(driverpath):
         outputfolder = row['outputfolder']
         testing = row['testing']
         postprocess = row['postprocess']
-
-        #get busy        
-        logfile = StringIO()
-        create_logfile(logfile, level=logging.NOTSET)
-        #set below to warning, because can't get it to log otherwise. despite setting levels everywhere
-        logging.warning('INFO - Beginning session from main')
-        logroot = 'generatetables_'
-        logextension = datetime.now().strftime('%m-%d-%Y_%H-%M')
-        sfsession.upload_file(params.LOG_PATH_ID, logroot + logextension + '.log', logfile)
+        googlesource = row['googlesource']
+        
+        #download design file if on google
+        if isinstance(googlesource, str): #blanks come in as nan floats            
+            download_drive_file(googlesource, filename)
 
         newname = os.path.basename(filename).replace('Design', 'Report' + '_' + statusfilter + '_ ' +logextension)
         outputfile = os.path.join(outputfolder, newname)
@@ -1545,7 +1562,8 @@ def run_generate_tables(driverpath):
             if generateexcel:
                 formatws(wb) #added by SM to format sheets
                 #Transfer datadefs sheets
-                transferdatadefs(sfsession, params.CIAC_2018_DATA_DEF_FILE, 'exportsheets', wb)
+                #TODO pull this info from teh design file so it's not specified here.
+                # transferdatadefs(sfsession, params.CIAC_2018_DATA_DEF_FILE, 'exportsheets', wb)                
                 file_io = BytesIO()
                 wb.save(file_io)        
                 #upload to sf
@@ -1600,4 +1618,4 @@ def run_generate_tables(driverpath):
 if __name__ == '__main__':
   
     run_generate_tables(r"Z:\Favorites\CPUC10 (Group D - Custom EM&V)\4 Deliverables\11 - Draft and Final Evaluation Reports\CIAC 2018\Design\generate_tables_driver.xlsx")
-
+    # run_generate_tables(r"Z:\Favorites\CPUC10 (Group D - Custom EM&V)\4 Deliverables\11 - Draft and Final Evaluation Reports\CIAC 2018\Design\generate_tables_driver_JSL.xlsx")

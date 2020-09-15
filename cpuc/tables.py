@@ -1280,11 +1280,11 @@ class Cell():
                             operator,
                             value,
                         )
-                    elif len(filt.split())==2: #for things like .isnull()
+                    elif len(filt.split())==2: #for things like .isnull(), isin(['xx', 'xy', 1, '1'])
                         filter_field, operator = filt.split()
                         #put original string back
                         filter_field = swap_out_strings(filter_field, replacements)
-                        value = swap_out_strings(value, replacements)
+                        operator = swap_out_strings(operator, replacements)
                         query = "result[result['{}']{}]".format(
                             filter_field,                            
                             operator,
